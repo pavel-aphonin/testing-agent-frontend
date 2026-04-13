@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Form, Input, Modal, Select, Switch, message } from "antd";
+import { Form, Input, Modal, Select, Switch } from "antd";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { createAdminUser } from "@/api/users";
+import { notify } from "@/utils/notify";
 import type { AdminUserCreate, UserRole } from "@/types";
 
 interface NewUserModalProps {
@@ -10,15 +12,16 @@ interface NewUserModalProps {
   onClose: () => void;
 }
 
-const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-  { value: "viewer", label: "Viewer (read-only)" },
-  { value: "tester", label: "Tester (can run explorations)" },
-  { value: "admin", label: "Admin (full control)" },
-];
-
 export function NewUserModal({ open, onClose }: NewUserModalProps) {
+  const { t } = useTranslation();
   const [form] = Form.useForm<AdminUserCreate>();
   const queryClient = useQueryClient();
+
+  const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+    { value: "viewer", label: t("newUserModal.roles.viewer") },
+    { value: "tester", label: t("newUserModal.roles.tester") },
+    { value: "admin", label: t("newUserModal.roles.admin") },
+  ];
 
   useEffect(() => {
     if (open) {
@@ -29,25 +32,26 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   const mutation = useMutation({
     mutationFn: createAdminUser,
     onSuccess: () => {
-      message.success("User created");
+      notify.success(t("newUserModal.created"));
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       onClose();
     },
     onError: (err: unknown) => {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Failed to create user";
-      message.error(detail);
+          ?.detail ?? t("newUserModal.createFailed");
+      notify.error(detail);
     },
   });
 
   return (
     <Modal
-      title="New user"
+      title={t("newUserModal.title")}
       open={open}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText="Create"
+      okText={t("newUserModal.create")}
+      cancelText={t("common.cancel")}
       confirmLoading={mutation.isPending}
       destroyOnHidden
     >
@@ -62,10 +66,10 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
       >
         <Form.Item
           name="email"
-          label="Email"
+          label={t("newUserModal.email")}
           rules={[
-            { required: true, message: "Email is required" },
-            { type: "email", message: "Must be a valid email" },
+            { required: true, message: t("newUserModal.emailRequired") },
+            { type: "email", message: t("newUserModal.emailInvalid") },
           ]}
         >
           <Input autoComplete="off" />
@@ -73,23 +77,23 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
 
         <Form.Item
           name="password"
-          label="Initial password"
+          label={t("newUserModal.password")}
           rules={[
-            { required: true, message: "Password is required" },
-            { min: 8, message: "At least 8 characters" },
+            { required: true, message: t("newUserModal.passwordRequired") },
+            { min: 8, message: t("newUserModal.passwordMin") },
           ]}
-          extra="Share this with the user out-of-band. They will be asked to change it on first login if 'Force password change' is on."
+          extra={t("newUserModal.passwordHelp")}
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
 
-        <Form.Item name="role" label="Role">
+        <Form.Item name="role" label={t("newUserModal.role")}>
           <Select options={ROLE_OPTIONS} />
         </Form.Item>
 
         <Form.Item
           name="must_change_password"
-          label="Force password change on first login"
+          label={t("newUserModal.mustChangePassword")}
           valuePropName="checked"
         >
           <Switch />

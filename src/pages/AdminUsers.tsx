@@ -11,10 +11,12 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { notify } from "@/utils/notify";
 
 import { deleteAdminUser, listAdminUsers } from "@/api/users";
 import { NewUserModal } from "@/components/NewUserModal";
@@ -28,6 +30,7 @@ const ROLE_COLOR: Record<UserRole, string> = {
 };
 
 export function AdminUsers() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,60 +43,52 @@ export function AdminUsers() {
   const deleteMutation = useMutation({
     mutationFn: deleteAdminUser,
     onSuccess: () => {
-      message.success("User deleted");
+      notify.success(t("adminUsers.deleted"));
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
     onError: (err: unknown) => {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Failed to delete user";
-      message.error(detail);
+          ?.detail ?? t("adminUsers.deleteFailed");
+      notify.error(detail);
     },
   });
 
   const columns: ColumnsType<AdminUser> = [
     {
-      title: "Email",
+      title: t("adminUsers.columns.email"),
       dataIndex: "email",
       key: "email",
     },
     {
-      title: "Role",
+      title: t("adminUsers.columns.role"),
       dataIndex: "role",
       key: "role",
       width: 120,
-      render: (role: UserRole) => <Tag color={ROLE_COLOR[role]}>{role}</Tag>,
+      render: (role: UserRole) => <Tag color={ROLE_COLOR[role]}>{t(`roles.${role}`)}</Tag>,
     },
     {
-      title: "Active",
+      title: t("adminUsers.columns.active"),
       dataIndex: "is_active",
       key: "is_active",
       width: 90,
-      render: (v: boolean) => (v ? "Yes" : "No"),
+      render: (v: boolean) => (v ? t("common.yes") : t("common.no")),
     },
     {
-      title: "Must change password",
-      dataIndex: "must_change_password",
-      key: "must_change_password",
-      width: 200,
-      render: (v: boolean) => (v ? "Yes" : "No"),
-    },
-    {
-      title: "Actions",
+      title: t("common.actions"),
       key: "actions",
       width: 110,
       render: (_: unknown, record: AdminUser) => (
         <Popconfirm
-          title="Delete this user?"
-          description="This is irreversible."
+          title={t("adminUsers.deleteConfirm")}
           onConfirm={() => deleteMutation.mutate(record.id)}
-          okText="Delete"
-          cancelText="Cancel"
+          okText={t("common.delete")}
+          cancelText={t("common.cancel")}
           okButtonProps={{ danger: true }}
           disabled={record.id === me?.id}
         >
           <Button danger size="small" disabled={record.id === me?.id}>
-            Delete
+            {t("common.delete")}
           </Button>
         </Popconfirm>
       ),
@@ -110,7 +105,7 @@ export function AdminUsers() {
         }}
       >
         <Typography.Title level={3} style={{ margin: 0 }}>
-          Users
+          {t("adminUsers.title")}
         </Typography.Title>
         <Space>
           <Button
@@ -120,14 +115,14 @@ export function AdminUsers() {
             }
             loading={isFetching && !isLoading}
           >
-            Refresh
+            {t("common.refresh")}
           </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setModalOpen(true)}
           >
-            New user
+            {t("adminUsers.newUser")}
           </Button>
         </Space>
       </Space>
@@ -138,6 +133,7 @@ export function AdminUsers() {
         dataSource={data}
         loading={isLoading}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: "max-content" }}
       />
 
       <NewUserModal open={modalOpen} onClose={() => setModalOpen(false)} />

@@ -1,6 +1,7 @@
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { fetchMe, login } from "@/api/auth";
@@ -16,6 +17,7 @@ interface LocationState {
 }
 
 export function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const setSession = useAuthStore((s) => s.setSession);
@@ -36,8 +38,8 @@ export function Login() {
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Login failed";
-      setError(typeof detail === "string" ? detail : "Login failed");
+          ?.detail ?? t("auth.loginError");
+      setError(typeof detail === "string" ? detail : t("auth.loginError"));
       useAuthStore.getState().logout();
     } finally {
       setSubmitting(false);
@@ -51,18 +53,18 @@ export function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#f0f2f5",
+        background: "#F5F5F5",
       }}
     >
-      <Card style={{ width: 400 }}>
+      <Card style={{ width: 400, borderTop: "3px solid #EE3424" }}>
         <Typography.Title level={3} style={{ textAlign: "center", marginBottom: 4 }}>
-          Testing Agent
+          {t("auth.loginTitle")}
         </Typography.Title>
         <Typography.Paragraph
           type="secondary"
           style={{ textAlign: "center", marginBottom: 24 }}
         >
-          Sign in to manage exploration runs
+          {t("auth.loginSubtitle")}
         </Typography.Paragraph>
 
         {error && (
@@ -83,24 +85,24 @@ export function Login() {
           <Form.Item
             name="email"
             rules={[
-              { required: true, message: "Email is required" },
-              { type: "email", message: "Must be a valid email" },
+              { required: true, message: t("auth.emailRequired") },
+              { type: "email", message: t("auth.emailRequired") },
             ]}
           >
             <Input
               prefix={<MailOutlined />}
-              placeholder="admin@example.com"
+              placeholder={t("auth.emailPlaceholder")}
               autoComplete="username"
             />
           </Form.Item>
 
           <Form.Item
             name="password"
-            rules={[{ required: true, message: "Password is required" }]}
+            rules={[{ required: true, message: t("auth.passwordRequired") }]}
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="Password"
+              placeholder={t("auth.passwordPlaceholder")}
               autoComplete="current-password"
             />
           </Form.Item>
@@ -112,7 +114,7 @@ export function Login() {
               block
               loading={submitting}
             >
-              Sign in
+              {t("auth.loginButton")}
             </Button>
           </Form.Item>
         </Form>

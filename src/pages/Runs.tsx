@@ -1,4 +1,9 @@
-import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  BarChartOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import {
   useMutation,
   useQuery,
@@ -11,10 +16,13 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+
+import { notify } from "@/utils/notify";
 
 import { deleteRun, listRuns } from "@/api/runs";
 import { NewRunModal } from "@/components/NewRunModal";
@@ -35,7 +43,9 @@ function formatDate(iso: string | null): string {
 }
 
 export function Runs() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -47,14 +57,14 @@ export function Runs() {
   const deleteMutation = useMutation({
     mutationFn: deleteRun,
     onSuccess: () => {
-      message.success("Run deleted");
+      notify.success(t("runs.deleted"));
       queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
     onError: (err: unknown) => {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? "Failed to delete run";
-      message.error(detail);
+          ?.detail ?? t("runs.deleteFailed");
+      notify.error(detail);
     },
   });
 
@@ -63,64 +73,82 @@ export function Runs() {
 
   const columns: ColumnsType<Run> = [
     {
-      title: "Bundle",
+      title: t("runs.columns.bundleId"),
       dataIndex: "bundle_id",
       key: "bundle_id",
       ellipsis: true,
     },
     {
-      title: "Mode",
+      title: t("runs.columns.mode"),
       dataIndex: "mode",
       key: "mode",
       width: 100,
     },
     {
-      title: "Status",
+      title: t("runs.columns.status"),
       dataIndex: "status",
       key: "status",
       width: 120,
       render: (status: RunStatus) => (
-        <Tag color={STATUS_COLOR[status]}>{status}</Tag>
+        <Tag color={STATUS_COLOR[status]}>{t(`runStatus.${status}`)}</Tag>
       ),
     },
     {
-      title: "Steps",
+      title: t("newRunModal.maxSteps"),
       dataIndex: "max_steps",
       key: "max_steps",
       width: 90,
     },
     {
-      title: "Created",
+      title: t("common.created"),
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
       render: formatDate,
     },
     {
-      title: "Finished",
+      title: t("runs.columns.started"),
       dataIndex: "finished_at",
       key: "finished_at",
       width: 180,
       render: formatDate,
     },
     {
-      title: "Actions",
+      title: t("common.actions"),
       key: "actions",
-      width: 100,
-      render: (_: unknown, record: Run) =>
-        canDelete ? (
-          <Popconfirm
-            title="Delete this run?"
-            onConfirm={() => deleteMutation.mutate(record.id)}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
+      width: 280,
+      render: (_: unknown, record: Run) => (
+        <Space size="small">
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/runs/${record.id}/progress`)}
           >
-            <Button danger size="small">
-              Delete
-            </Button>
-          </Popconfirm>
-        ) : null,
+            {t("runs.viewLive")}
+          </Button>
+          <Button
+            size="small"
+            icon={<BarChartOutlined />}
+            onClick={() => navigate(`/runs/${record.id}/results`)}
+            disabled={record.status === "pending"}
+          >
+            {t("runs.viewResults")}
+          </Button>
+          {canDelete && (
+            <Popconfirm
+              title={t("runs.deleteConfirm")}
+              onConfirm={() => deleteMutation.mutate(record.id)}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
+              okButtonProps={{ danger: true }}
+            >
+              <Button danger size="small">
+                {t("common.delete")}
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -134,7 +162,7 @@ export function Runs() {
         }}
       >
         <Typography.Title level={3} style={{ margin: 0 }}>
-          Runs
+          {t("runs.title")}
         </Typography.Title>
         <Space>
           <Button
@@ -144,7 +172,7 @@ export function Runs() {
             }
             loading={isFetching && !isLoading}
           >
-            Refresh
+            {t("common.refresh")}
           </Button>
           {canCreate && (
             <Button
@@ -152,7 +180,7 @@ export function Runs() {
               icon={<PlusOutlined />}
               onClick={() => setModalOpen(true)}
             >
-              New run
+              {t("runs.newRun")}
             </Button>
           )}
         </Space>
@@ -164,6 +192,7 @@ export function Runs() {
         dataSource={data}
         loading={isLoading}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: "max-content" }}
       />
 
       <NewRunModal open={modalOpen} onClose={() => setModalOpen(false)} />
