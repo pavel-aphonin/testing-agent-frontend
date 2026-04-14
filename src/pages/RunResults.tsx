@@ -21,6 +21,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { getRunResults } from "@/api/runs";
 import { DefectsPanel } from "@/components/DefectsPanel";
+import { PathFinder } from "@/components/graph/PathFinder";
 import { StateGraph } from "@/components/graph/StateGraph";
 import type { RunEdgeSummary, RunScreenSummary, RunStatus } from "@/types";
 
@@ -316,6 +317,12 @@ export function RunResults() {
       >
         {runId && <DefectsPanel runId={runId} />}
       </Card>
+
+      {screens.length > 1 && (
+        <div style={{ marginBottom: 16 }}>
+          <PathFinder screens={screens} edges={edges} />
+        </div>
+      )}
 
       <Card
         title={t("runResults.stateGraph")}

@@ -30,6 +30,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadResult, setUploadResult] = useState<AppUploadResponse | null>(null);
   const [useScenarios, setUseScenarios] = useState(false);
+  const [pbtEnabled, setPbtEnabled] = useState(false);
 
   const modeOptions: { value: RunMode; label: string }[] = [
     { value: "hybrid", label: t("newRunModal.modes.hybrid") },
@@ -68,6 +69,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
     setUploadStatus("idle");
     setUploadResult(null);
     setUseScenarios(false);
+    setPbtEnabled(false);
     if (settingsQuery.data) {
       form.setFieldsValue({
         mode: settingsQuery.data.default_mode,
@@ -133,6 +135,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             c_puct: values.c_puct,
             rollout_depth: values.rollout_depth,
             scenario_ids: useScenarios ? (values.scenario_ids ?? []) : [],
+            pbt_enabled: pbtEnabled,
           });
         }}
         initialValues={{
@@ -238,6 +241,32 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             />
           </Form.Item>
         )}
+
+        {/* ---------- PBT toggle ---------- */}
+        <Form.Item
+          label={
+            <span>
+              <LabelWithHint
+                label="Property-based testing"
+                hint="Агент систематически проверяет валидацию форм: пустые значения, переполнение, спецсимволы (XSS, SQL-инъекции), unicode. Замедляет исследование в 5-8 раз, но находит больше дефектов валидации."
+              />
+              {"\u00A0"}
+              <Switch
+                size="small"
+                checked={pbtEnabled}
+                onChange={setPbtEnabled}
+                style={{ marginLeft: 8 }}
+              />
+            </span>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <span style={{ color: "#999", fontSize: 12 }}>
+            {pbtEnabled
+              ? "Каждое поле формы будет протестировано на 4-8 вариантах данных"
+              : "Агент использует только один валидный набор данных"}
+          </span>
+        </Form.Item>
 
         {/* ---------- Advanced settings ---------- */}
         <Collapse

@@ -334,6 +334,7 @@ export interface RunCreateV2 {
   c_puct?: number;
   rollout_depth?: number;
   scenario_ids?: string[];
+  pbt_enabled?: boolean;
 }
 
 // ----------------------------------------------------------------- Knowledge
