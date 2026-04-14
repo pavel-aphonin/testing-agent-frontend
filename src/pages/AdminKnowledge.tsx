@@ -5,6 +5,7 @@ import {
   QuestionCircleOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,6 +31,7 @@ import {
   deleteKnowledgeDocument,
   listKnowledgeDocuments,
   queryKnowledgeBase,
+  reembedKnowledgeDocument,
 } from "@/api/knowledge";
 import { notify } from "@/utils/notify";
 import type {
@@ -129,6 +131,23 @@ export function AdminKnowledge() {
     },
     onError: () => {
       notify.error(t("knowledge.deleteFailed"));
+    },
+  });
+
+  const reembedMutation = useMutation({
+    mutationFn: reembedKnowledgeDocument,
+    onSuccess: (doc) => {
+      notify.success(
+        "Эмбеддинги пересчитаны",
+        `${doc.chunk_count} фрагментов обновлено через ${doc.embedding_model}`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["knowledge-documents"] });
+    },
+    onError: (err: unknown) => {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? "Не удалось пересчитать";
+      notify.error("Ошибка пересчёта", detail);
     },
   });
 
@@ -237,22 +256,39 @@ export function AdminKnowledge() {
     {
       title: "",
       key: "actions",
-      width: 80,
+      width: 110,
       render: (_, doc) => (
-        <Popconfirm
-          title={t("knowledge.deleteConfirm")}
-          description={t("knowledge.deleteDescription")}
-          onConfirm={() => deleteMutation.mutate(doc.id)}
-          okText={t("common.delete")}
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            danger
-            type="text"
-            icon={<DeleteOutlined />}
-            size="small"
-          />
-        </Popconfirm>
+        <Space size={0}>
+          {/* Re-embed: only show for documents stuck on the fake-hash
+              fallback. Pulses orange to draw attention since search on
+              these docs is broken until they're re-embedded. */}
+          {isFakeEmbedding(doc.embedding_model) && (
+            <Tooltip title="Пересчитать эмбеддинги через текущую модель. Используйте, если документ был загружен пока сервер моделей был недоступен.">
+              <Button
+                type="text"
+                icon={<SyncOutlined spin={reembedMutation.isPending && reembedMutation.variables === doc.id} />}
+                size="small"
+                onClick={() => reembedMutation.mutate(doc.id)}
+                style={{ color: "#fa8c16" }}
+                disabled={reembedMutation.isPending}
+              />
+            </Tooltip>
+          )}
+          <Popconfirm
+            title={t("knowledge.deleteConfirm")}
+            description={t("knowledge.deleteDescription")}
+            onConfirm={() => deleteMutation.mutate(doc.id)}
+            okText={t("common.delete")}
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              danger
+              type="text"
+              icon={<DeleteOutlined />}
+              size="small"
+            />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

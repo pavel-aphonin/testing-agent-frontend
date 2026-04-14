@@ -39,6 +39,15 @@ export async function deleteKnowledgeDocument(id: string): Promise<void> {
   await apiClient.delete(`/api/admin/knowledge/documents/${id}`);
 }
 
+export async function reembedKnowledgeDocument(
+  id: string,
+): Promise<KnowledgeDocumentSummary> {
+  const { data } = await apiClient.post<KnowledgeDocumentSummary>(
+    `/api/admin/knowledge/documents/${id}/reembed`,
+  );
+  return data;
+}
+
 export async function queryKnowledgeBase(
   payload: KnowledgeQuery,
 ): Promise<KnowledgeQueryResponse> {

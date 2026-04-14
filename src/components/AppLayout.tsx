@@ -4,6 +4,7 @@ import {
   DatabaseOutlined,
   ExperimentOutlined,
   LogoutOutlined,
+  MessageOutlined,
   MobileOutlined,
   PlayCircleOutlined,
   SettingOutlined,
@@ -15,6 +16,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { AssistantDrawer } from "@/components/AssistantDrawer";
+import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { useAuthStore } from "@/store/auth";
 
 const { Header, Sider, Content } = Layout;
@@ -30,6 +33,7 @@ export function AppLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [collapsed, setCollapsed] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   if (!user) return null;
 
@@ -271,7 +275,7 @@ export function AppLayout() {
       </Sider>
 
       <Layout style={{ minWidth: 0 }}>
-        {/* Header — only logout button */}
+        {/* Header — worker status, assistant, logout */}
         <Header
           style={{
             background: "#fff",
@@ -282,8 +286,29 @@ export function AppLayout() {
             borderBottom: "1px solid #f0f0f0",
             height: 48,
             lineHeight: "48px",
+            gap: 24,
           }}
         >
+          <WorkerStatusBadge />
+
+          <Tooltip title="Открыть ассистента" placement="bottom">
+            <a
+              onClick={() => setAssistantOpen(true)}
+              style={{
+                color: "#999",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "color 0.2s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#EE3424")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#999")}
+            >
+              <MessageOutlined /> Ассистент
+            </a>
+          </Tooltip>
+
           <a
             onClick={handleLogout}
             style={{
@@ -300,6 +325,11 @@ export function AppLayout() {
             <LogoutOutlined /> {t("auth.signOut")}
           </a>
         </Header>
+
+        <AssistantDrawer
+          open={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+        />
 
         <Content style={{ margin: 24, minWidth: 0, overflow: "auto" }}>
           <div
