@@ -69,10 +69,21 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
   // anchored to "the latest").
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
+  // Pre-filter: drop events that render as empty rows in the timeline.
+  // EventLine returns null for screen_discovered with is_new=false (visit
+  // count bumps), but the Virtuoso row wrapper still showed the timestamp
+  // + an empty body — Pavel saw "two шаг 14 entries, one blank".
+  const renderableEvents = useMemo(() => {
+    return events.filter((e) => {
+      if (e.type === "screen_discovered" && e.is_new === false) return false;
+      return true;
+    });
+  }, [events]);
+
   const visibleEvents = useMemo(() => {
-    if (events.length <= visibleCount) return events;
-    return events.slice(events.length - visibleCount);
-  }, [events, visibleCount]);
+    if (renderableEvents.length <= visibleCount) return renderableEvents;
+    return renderableEvents.slice(renderableEvents.length - visibleCount);
+  }, [renderableEvents, visibleCount]);
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const atBottomRef = useRef(true);
@@ -88,7 +99,7 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
     }
   }, [visibleEvents.length, autoScroll]);
 
-  if (events.length === 0) {
+  if (renderableEvents.length === 0) {
     return (
       <div style={{ padding: 24, textAlign: "center", color: "#999" }}>
         {emptyText}
@@ -96,7 +107,7 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
     );
   }
 
-  const hasMore = visibleCount < events.length;
+  const hasMore = visibleCount < renderableEvents.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -107,7 +118,7 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
             type="link"
             onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
           >
-            ↑ Посмотреть предыдущие ({events.length - visibleCount} событий)
+            ↑ Посмотреть предыдущие ({renderableEvents.length - visibleCount} событий)
           </Button>
         </div>
       )}
