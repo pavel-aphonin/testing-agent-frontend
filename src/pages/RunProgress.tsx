@@ -24,8 +24,10 @@ interface SnapshotEvent {
   run: {
     id: string;
     status: RunStatus;
+    title: string | null;
     bundle_id: string;
     mode: string;
+    created_at: string | null;
     started_at: string | null;
     finished_at: string | null;
     error_message: string | null;
@@ -65,11 +67,40 @@ interface LiveEvent {
   new_status?: RunStatus;
   screen_id_hash?: string;
   screen_name?: string;
+  is_new?: boolean;
   source_screen_hash?: string;
   target_screen_hash?: string;
   action_type?: string;
+  action_details?: { element?: string | null; value?: string | null } | null;
   message?: string;
   stats?: Record<string, unknown>;
+}
+
+const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+/** DD.MM.YYYY HH:MM:SS for ru, locale toLocaleString otherwise. */
+function fmtDateTime(iso: string | null, lang: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (lang.startsWith("ru")) {
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString("ru-RU", { hour12: false });
+    return `${day}.${month}.${year} ${time}`;
+  }
+  return d.toLocaleString();
+}
+
+function fmtTime(iso: string | undefined, lang: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (lang.startsWith("ru")) return d.toLocaleTimeString("ru-RU", { hour12: false });
+  return d.toLocaleTimeString();
 }
 
 const STATUS_COLOR: Record<RunStatus, string> = {
@@ -88,7 +119,8 @@ function buildWebSocketUrl(runId: string, token: string): string {
 }
 
 export function RunProgress() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const token = useAuthStore((s) => s.token);
@@ -192,10 +224,26 @@ export function RunProgress() {
           {t("common.back")}
         </Button>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          {t("runProgress.title")}
+          {snapshot?.run.title
+            ? snapshot.run.title
+            : snapshot?.run.created_at
+            ? `Запуск от ${fmtDateTime(snapshot.run.created_at, lang)}`
+            : t("runProgress.title")}
         </Typography.Title>
         <Tag color={STATUS_COLOR[currentStatus]}>{t(`runStatus.${currentStatus}`)}</Tag>
-        <Tag>{connState === "open" ? `● ${t("runProgress.wsConnected")}` : connState}</Tag>
+        {/* Connection indicator only matters while the run is active. After
+            the run reaches a terminal state, the WebSocket stays open but
+            no events will arrive — showing "● Подключено" misleads the
+            user into thinking something is still happening. */}
+        {!TERMINAL_STATUSES.has(currentStatus) && (
+          <Tag color={connState === "open" ? "green" : "default"}>
+            {connState === "open"
+              ? `● ${t("runProgress.wsConnected")}`
+              : connState === "connecting"
+              ? "Подключение…"
+              : "Соединение разорвано"}
+          </Tag>
+        )}
       </div>
 
       {errorMsg && (
@@ -217,14 +265,10 @@ export function RunProgress() {
             </Descriptions.Item>
             <Descriptions.Item label={t("runProgress.mode")}>{snapshot.run.mode}</Descriptions.Item>
             <Descriptions.Item label={t("runProgress.started")}>
-              {snapshot.run.started_at
-                ? new Date(snapshot.run.started_at).toLocaleString()
-                : "—"}
+              {fmtDateTime(snapshot.run.started_at, lang)}
             </Descriptions.Item>
             <Descriptions.Item label={t("runProgress.finished")}>
-              {snapshot.run.finished_at
-                ? new Date(snapshot.run.finished_at).toLocaleString()
-                : "—"}
+              {fmtDateTime(snapshot.run.finished_at, lang)}
             </Descriptions.Item>
           </Descriptions>
         </Card>
@@ -302,9 +346,7 @@ export function RunProgress() {
                   locale={{ emptyText: t("runProgress.noEvents") }}
                   style={{ maxHeight: 420, overflowY: "auto" }}
                   renderItem={(e, idx) => {
-                    const time = e.timestamp
-                      ? new Date(e.timestamp).toLocaleTimeString()
-                      : "";
+                    const time = fmtTime(e.timestamp, lang);
                     return (
                       <List.Item key={idx}>
                         <div style={{ width: "100%" }}>
@@ -312,7 +354,7 @@ export function RunProgress() {
                             type="secondary"
                             style={{ fontSize: 11 }}
                           >
-                            {time} · step {e.step_idx ?? 0}
+                            {time} · шаг {e.step_idx ?? 0}
                           </Typography.Text>
                           <br />
                           <EventLine event={e} />
@@ -326,18 +368,22 @@ export function RunProgress() {
           </Row>
         </Col>
 
-        {/* Right column: live simulator mirror — sticky so it stays
-            visible while the user scrolls through the events list. */}
-        <Col xs={24} lg={8}>
-          <Card
-            title={t("liveMirror.title")}
-            size="small"
-            styles={{ body: { padding: 8 } }}
-            style={{ position: "sticky", top: 16 }}
-          >
-            <LiveMirror runId={runId} />
-          </Card>
-        </Col>
+        {/* Right column: live simulator mirror — only shown while the
+            run is active. After completion the simulator is gone and the
+            mirror would show a permanent loading spinner, which is just
+            visual noise on the results-style view. */}
+        {!TERMINAL_STATUSES.has(currentStatus) && (
+          <Col xs={24} lg={8}>
+            <Card
+              title={t("liveMirror.title")}
+              size="small"
+              styles={{ body: { padding: 8 } }}
+              style={{ position: "sticky", top: 16 }}
+            >
+              <LiveMirror runId={runId} />
+            </Card>
+          </Col>
+        )}
       </Row>
     </>
   );
@@ -357,8 +403,10 @@ function EventLine({ event }: { event: LiveEvent }) {
         </span>
       );
     case "screen_discovered": {
-      const isNew = (event as unknown as Record<string, unknown>).is_new !== false;
-      if (!isNew) return null; // silent visit count update
+      // Only emit a UI line for genuinely new screens. Repeat visits
+      // bump visit_count silently — printing "Обнаружил новый экран
+      // Вход" five times for the same screen was confusing.
+      if (event.is_new === false) return null;
       return (
         <span>
           🔍 Обнаружил новый экран: <strong>«{event.screen_name}»</strong>
@@ -366,32 +414,43 @@ function EventLine({ event }: { event: LiveEvent }) {
       );
     }
     case "edge_discovered": {
-      const label = (event as unknown as Record<string, unknown>).element_label as string | undefined;
-      const inputText = (event as unknown as Record<string, unknown>).input_text as string | undefined;
+      const details = event.action_details ?? {};
+      const label = details.element || undefined;
+      const value = details.value || undefined;
       const moved = event.source_screen_hash !== event.target_screen_hash;
 
       if (event.action_type === "input") {
-        const truncated = inputText && inputText.length > 30
-          ? inputText.slice(0, 27) + "…" : inputText;
+        const truncated =
+          value && value.length > 40 ? value.slice(0, 37) + "…" : value;
         return (
           <span>
-            ✏️ Ввожу {truncated ? `«${truncated}»` : "данные"}
-            {label ? ` в поле «${label}»` : " в текстовое поле"}
-            {moved ? " → перехожу на другой экран" : ""}
+            ✏️ Ввожу {truncated ? <code>«{truncated}»</code> : "данные"}
+            {label ? <> в поле <strong>«{label}»</strong></> : " в текстовое поле"}
+            {moved ? " → перешёл на другой экран" : ""}
           </span>
         );
       }
       if (event.action_type === "tap") {
         return (
           <span>
-            👆 Нажимаю на {label ? `«${label}»` : "кнопку"}
-            {moved ? " → перехожу на другой экран" : ""}
+            👆 Нажимаю {label ? <strong>«{label}»</strong> : "элемент"}
+            {moved ? " → перешёл на другой экран" : ""}
           </span>
         );
       }
+      if (event.action_type === "swipe") {
+        return (
+          <span>
+            👉 Свайп{value ? ` ${value}` : ""}
+            {label ? <> на <strong>«{label}»</strong></> : ""}
+          </span>
+        );
+      }
+      // Fallback for unexpected action types
       return (
         <span>
-          {event.action_type} {label || ""}
+          {event.action_type} {label ? <strong>«{label}»</strong> : ""}
+          {value ? <code> «{value}»</code> : ""}
           {moved ? " → переход" : ""}
         </span>
       );

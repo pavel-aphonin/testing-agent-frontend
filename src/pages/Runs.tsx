@@ -73,6 +73,28 @@ export function Runs() {
 
   const columns: ColumnsType<Run> = [
     {
+      title: "Название",
+      key: "title",
+      ellipsis: true,
+      render: (_: unknown, run: Run) => {
+        // Show user title when set, else fall back to a date-derived label
+        // so the column is never empty (helps users at-a-glance scan).
+        if (run.title) return <strong>{run.title}</strong>;
+        const d = new Date(run.created_at);
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const time = d.toLocaleTimeString("ru-RU", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return (
+          <span style={{ color: "#999" }}>
+            Запуск от {day}.{month} {time}
+          </span>
+        );
+      },
+    },
+    {
       title: t("runs.columns.bundleId"),
       dataIndex: "bundle_id",
       key: "bundle_id",

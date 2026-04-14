@@ -33,6 +33,7 @@ export type RunStatus =
 export interface Run {
   id: string;
   user_id: string;
+  title: string | null;
   bundle_id: string;
   device_id: string;
   platform: string;
@@ -327,6 +328,7 @@ export interface SimulatorConfig {
 // ------------------------------------------------------------ Run V2
 
 export interface RunCreateV2 {
+  title?: string;
   app_file_id: string;
   device_config_id: string;
   mode?: RunMode;

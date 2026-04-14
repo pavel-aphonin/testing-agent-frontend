@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Collapse, Form, InputNumber, Modal, Select, Switch, Tag, Upload } from "antd";
+import { Collapse, Form, Input, InputNumber, Modal, Select, Switch, Tag, Upload } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -128,6 +128,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         onFinish={(values) => {
           if (!uploadResult) return;
           submitMutation.mutate({
+            title: values.title || undefined,
             app_file_id: uploadResult.upload_id,
             device_config_id: values.device_config_id,
             mode: values.mode,
@@ -145,6 +146,23 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
           rollout_depth: 5,
         }}
       >
+        {/* ---------- Title (optional) ---------- */}
+        <Form.Item
+          name="title"
+          label={
+            <LabelWithHint
+              label="Название запуска"
+              hint="Произвольное название, чтобы быстро находить запуск в списке. Например, «Smoke 15.04» или «Регресс после правки логина». Если оставить пустым, будет использовано «Запуск от {дата}»."
+            />
+          }
+        >
+          <Input
+            placeholder="Например, «Smoke после релиза 1.2.0» (необязательно)"
+            maxLength={200}
+            allowClear
+          />
+        </Form.Item>
+
         {/* ---------- File upload ---------- */}
         <Form.Item label={<LabelWithHint label={t("newRunModal.uploadApp")} hint="Загрузите файл сборки приложения. Поддерживаются .app.zip и .ipa для iOS, .apk для Android." />}>
           {uploadStatus === "success" && uploadResult ? (
