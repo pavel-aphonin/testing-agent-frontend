@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { EventsTimeline, type TimelineEvent } from "@/components/EventsTimeline";
 import { LiveMirror } from "@/components/LiveMirror";
 import { useAuthStore } from "@/store/auth";
 import type { RunStatus } from "@/types";
@@ -43,6 +44,7 @@ interface ScreenSummary {
   name: string;
   visit_count: number;
   screenshot_path: string | null;
+  first_seen_at: string | null;
 }
 
 interface EdgeSummary {
@@ -50,8 +52,10 @@ interface EdgeSummary {
   source_screen_hash: string;
   target_screen_hash: string;
   action_type: string;
+  action_details: { element?: string | null; value?: string | null } | null;
   step_idx: number;
   success: boolean;
+  created_at: string | null;
 }
 
 interface LiveEvent {
@@ -96,12 +100,6 @@ function fmtDateTime(iso: string | null, lang: string): string {
   return d.toLocaleString();
 }
 
-function fmtTime(iso: string | undefined, lang: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (lang.startsWith("ru")) return d.toLocaleTimeString("ru-RU", { hour12: false });
-  return d.toLocaleTimeString();
-}
 
 const STATUS_COLOR: Record<RunStatus, string> = {
   pending: "default",
@@ -204,6 +202,88 @@ export function RunProgress() {
     const fromSnapshot = snapshot?.edges.length ?? 0;
     const fromLive = events.filter((e) => e.type === "edge_discovered").length;
     return fromSnapshot + fromLive;
+  }, [snapshot, events]);
+
+  // Build a unified timeline that includes both the historical events
+  // reconstructed from the snapshot (so a user landing on the page after
+  // the run has been going for a while doesn't see an empty list) and
+  // the live events from the WebSocket. Deduplicated by step_idx + type.
+  const timelineEvents: TimelineEvent[] = useMemo(() => {
+    const items: TimelineEvent[] = [];
+
+    if (snapshot) {
+      // 1. Status change: "running"
+      if (snapshot.run.started_at) {
+        items.push({
+          type: "status_change",
+          new_status: "running",
+          step_idx: 0,
+          timestamp: snapshot.run.started_at,
+        });
+      }
+      // 2. Each screen as a screen_discovered event (is_new=true)
+      snapshot.screens.forEach((s) => {
+        items.push({
+          type: "screen_discovered",
+          step_idx: 0,
+          timestamp: s.first_seen_at,
+          screen_id_hash: s.screen_id_hash,
+          screen_name: s.name,
+          is_new: true,
+        });
+      });
+      // 3. Each edge as an edge_discovered event
+      snapshot.edges.forEach((e) => {
+        items.push({
+          type: "edge_discovered",
+          step_idx: e.step_idx,
+          timestamp: e.created_at,
+          source_screen_hash: e.source_screen_hash,
+          target_screen_hash: e.target_screen_hash,
+          action_type: e.action_type,
+          action_details: e.action_details,
+        });
+      });
+      // 4. Terminal status if applicable
+      if (snapshot.run.finished_at && snapshot.run.status !== "running") {
+        items.push({
+          type: "status_change",
+          new_status: snapshot.run.status,
+          timestamp: snapshot.run.finished_at,
+        });
+      }
+    }
+
+    // Append live events (skip those already in the snapshot — heuristic:
+    // edge_discovered with step_idx already present from snapshot is a dup)
+    const seenEdgeSteps = new Set(
+      snapshot?.edges.map((e) => e.step_idx) ?? [],
+    );
+    const seenScreenHashes = new Set(
+      snapshot?.screens.map((s) => s.screen_id_hash) ?? [],
+    );
+    events.forEach((e) => {
+      if (e.type === "edge_discovered" && e.step_idx != null && seenEdgeSteps.has(e.step_idx)) {
+        return; // already in snapshot
+      }
+      if (
+        e.type === "screen_discovered"
+        && e.is_new
+        && e.screen_id_hash
+        && seenScreenHashes.has(e.screen_id_hash)
+      ) {
+        return;
+      }
+      items.push(e as TimelineEvent);
+    });
+
+    // Sort by timestamp; events without timestamp keep insertion order
+    items.sort((a, b) => {
+      if (!a.timestamp || !b.timestamp) return 0;
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+
+    return items;
   }, [snapshot, events]);
 
   const latestStats = useMemo(() => {
@@ -339,29 +419,13 @@ export function RunProgress() {
                 title={t("runProgress.events")}
                 size="small"
                 style={{ height: 480 }}
+                styles={{ body: { padding: 0, height: "calc(100% - 38px)" } }}
               >
-                <List
-                  size="small"
-                  dataSource={[...events].reverse()}
-                  locale={{ emptyText: t("runProgress.noEvents") }}
-                  style={{ maxHeight: 420, overflowY: "auto" }}
-                  renderItem={(e, idx) => {
-                    const time = fmtTime(e.timestamp, lang);
-                    return (
-                      <List.Item key={idx}>
-                        <div style={{ width: "100%" }}>
-                          <Typography.Text
-                            type="secondary"
-                            style={{ fontSize: 11 }}
-                          >
-                            {time} · шаг {e.step_idx ?? 0}
-                          </Typography.Text>
-                          <br />
-                          <EventLine event={e} />
-                        </div>
-                      </List.Item>
-                    );
-                  }}
+                <EventsTimeline
+                  events={timelineEvents}
+                  language={lang}
+                  autoScroll={!TERMINAL_STATUSES.has(currentStatus)}
+                  emptyText={t("runProgress.noEvents")}
                 />
               </Card>
             </Col>
@@ -387,106 +451,4 @@ export function RunProgress() {
       </Row>
     </>
   );
-}
-
-function EventLine({ event }: { event: LiveEvent }) {
-  switch (event.type) {
-    case "status_change":
-      return (
-        <span>
-          <Tag color={STATUS_COLOR[event.new_status as RunStatus]}>
-            {event.new_status === "running" ? "▶ Исследование начато" :
-             event.new_status === "completed" ? "✓ Исследование завершено" :
-             event.new_status === "failed" ? "✗ Ошибка" :
-             event.new_status}
-          </Tag>
-        </span>
-      );
-    case "screen_discovered": {
-      // Only emit a UI line for genuinely new screens. Repeat visits
-      // bump visit_count silently — printing "Обнаружил новый экран
-      // Вход" five times for the same screen was confusing.
-      if (event.is_new === false) return null;
-      return (
-        <span>
-          🔍 Обнаружил новый экран: <strong>«{event.screen_name}»</strong>
-        </span>
-      );
-    }
-    case "edge_discovered": {
-      const details = event.action_details ?? {};
-      const label = details.element || undefined;
-      const value = details.value || undefined;
-      const moved = event.source_screen_hash !== event.target_screen_hash;
-
-      if (event.action_type === "input") {
-        const truncated =
-          value && value.length > 40 ? value.slice(0, 37) + "…" : value;
-        return (
-          <span>
-            ✏️ Ввожу {truncated ? <code>«{truncated}»</code> : "данные"}
-            {label ? <> в поле <strong>«{label}»</strong></> : " в текстовое поле"}
-            {moved ? " → перешёл на другой экран" : ""}
-          </span>
-        );
-      }
-      if (event.action_type === "tap") {
-        return (
-          <span>
-            👆 Нажимаю {label ? <strong>«{label}»</strong> : "элемент"}
-            {moved ? " → перешёл на другой экран" : ""}
-          </span>
-        );
-      }
-      if (event.action_type === "swipe") {
-        return (
-          <span>
-            👉 Свайп{value ? ` ${value}` : ""}
-            {label ? <> на <strong>«{label}»</strong></> : ""}
-          </span>
-        );
-      }
-      // Fallback for unexpected action types
-      return (
-        <span>
-          {event.action_type} {label ? <strong>«{label}»</strong> : ""}
-          {value ? <code> «{value}»</code> : ""}
-          {moved ? " → переход" : ""}
-        </span>
-      );
-    }
-    case "stats_update": {
-      const s = event.stats as Record<string, number> | undefined;
-      if (!s) return null;
-      return (
-        <span style={{ color: "#888", fontSize: 11 }}>
-          📊 Экранов: {s.screens} · Переходов: {s.edges} · Шаг {s.step}/{s.max_steps}
-        </span>
-      );
-    }
-    case "error":
-      return (
-        <span style={{ color: "#cf1322" }}>
-          ❌ {event.message}
-        </span>
-      );
-    case "log": {
-      // Translate common engine messages to human-readable Russian
-      const msg = event.message || "";
-      const humanMsg =
-        msg.includes("Creating simulator") ? "🔧 Создаю виртуальное устройство..." :
-        msg.includes("Booting") ? "⏳ Запускаю устройство..." :
-        msg.includes("Installing app") ? "📲 Устанавливаю приложение..." :
-        msg.includes("Launching app") ? "🚀 Запускаю приложение..." :
-        msg.includes("App launched") ? "✅ Приложение запущено, начинаю исследование" :
-        msg.includes("Cleaning up") ? "🧹 Завершаю работу, удаляю устройство..." :
-        msg.includes("Asking LLM") ? "🤔 Изучаю содержимое экрана..." :
-        msg.includes("vision") ? "👁 Анализирую снимок экрана..." :
-        msg.includes("wait") ? "⏳ Ожидаю загрузки экрана..." :
-        msg;
-      return <span>{humanMsg}</span>;
-    }
-    default:
-      return <span>{event.type}</span>;
-  }
 }
