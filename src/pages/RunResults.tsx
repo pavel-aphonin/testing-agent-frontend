@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { getRunResults } from "@/api/runs";
+import { DefectsPanel } from "@/components/DefectsPanel";
 import { StateGraph } from "@/components/graph/StateGraph";
 import type { RunEdgeSummary, RunScreenSummary, RunStatus } from "@/types";
 
@@ -307,6 +308,14 @@ export function RunResults() {
           }
         />
       )}
+
+      <Card
+        title="Дефекты"
+        size="small"
+        style={{ marginBottom: 16 }}
+      >
+        {runId && <DefectsPanel runId={runId} />}
+      </Card>
 
       <Card
         title={t("runResults.stateGraph")}
