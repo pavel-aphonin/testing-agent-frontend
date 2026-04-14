@@ -40,3 +40,7 @@ export async function getRunResults(id: string): Promise<RunResults> {
 export async function deleteRun(id: string): Promise<void> {
   await apiClient.delete(`/api/runs/${id}`);
 }
+
+export async function cancelRun(id: string): Promise<void> {
+  await apiClient.post(`/api/runs/${id}/cancel`);
+}

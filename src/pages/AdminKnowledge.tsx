@@ -52,24 +52,27 @@ function isFakeEmbedding(name: string): boolean {
 }
 
 /** Escape HTML and highlight query terms with yellow marker */
-function highlightTerms(text: string, query: string): string {
-  // Escape HTML
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+/** Escape HTML and highlight LLM-provided citations with yellow marker.
+ *
+ * `citations` are exact phrases from the source text that the LLM used to
+ * generate the answer. Semantic (not keyword) highlighting: we mark the
+ * actual grounding of the answer, not just query terms.
+ */
+function highlightCitations(text: string, citations: string[]): string {
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escaped = escape(text);
 
-  if (!query.trim()) return escaped;
+  const clean = citations.map((c) => c.trim()).filter((c) => c.length >= 4);
+  if (clean.length === 0) return escaped;
 
-  // Extract meaningful words (3+ chars) from query
-  const words = query
-    .split(/\s+/)
-    .filter((w) => w.length >= 3)
-    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // Escape regex metachars in citations; sort by length desc so longer
+  // citations match before their sub-fragments.
+  const patterns = clean
+    .sort((a, b) => b.length - a.length)
+    .map((c) => escape(c).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
-  if (words.length === 0) return escaped;
-
-  const regex = new RegExp(`(${words.join("|")})`, "gi");
+  const regex = new RegExp(`(${patterns.join("|")})`, "gi");
   return escaped.replace(
     regex,
     '<mark style="background:#fff3b0;padding:0 2px;border-radius:2px">$1</mark>',
@@ -87,9 +90,9 @@ export function AdminKnowledge() {
   const [searchResults, setSearchResults] = useState<{
     embedding_model: string;
     answer?: string | null;
+    citations?: string[];
     matches: KnowledgeMatch[];
   } | null>(null);
-  const [lastQuery, setLastQuery] = useState("");
 
   const [uploadForm] = Form.useForm<KnowledgeDocumentCreate>();
   const [searchForm] = Form.useForm<{ query: string; top_k: number }>();
@@ -439,7 +442,7 @@ export function AdminKnowledge() {
           form={searchForm}
           layout="vertical"
           initialValues={{ top_k: 5 }}
-          onFinish={(values) => { setLastQuery(values.query); queryMutation.mutate(values); }}
+          onFinish={(values) => queryMutation.mutate(values)}
         >
           <Form.Item
             name="query"
@@ -511,7 +514,7 @@ export function AdminKnowledge() {
                           marginTop: 4,
                         }}
                         dangerouslySetInnerHTML={{
-                          __html: highlightTerms(m.text, lastQuery),
+                          __html: highlightCitations(m.text, searchResults.citations ?? []),
                         }}
                       />
                     </details>

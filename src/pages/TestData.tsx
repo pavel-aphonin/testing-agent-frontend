@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { notify } from "@/utils/notify";
+import { LabelWithHint } from "@/components/LabelWithHint";
 
 import {
   createTestData,
@@ -332,7 +333,7 @@ export function TestData() {
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="key"
-            label={t("testData.keyLabel")}
+            label={<LabelWithHint label={t("testData.keyLabel")} hint="Короткое имя-идентификатор. Используется в сценариях как {{test_data.email}}. Например: email, password, account_number." />}
             rules={[{ required: true, message: t("testData.keyRequired") }]}
           >
             <Input placeholder={t("testData.keyPlaceholder")} />
@@ -340,7 +341,7 @@ export function TestData() {
 
           <Form.Item
             name="value"
-            label={t("testData.valueLabel")}
+            label={<LabelWithHint label={t("testData.valueLabel")} hint="Значение, которое агент будет подставлять. Например: test@example.com или 4242 4242 4242 4242." />}
             rules={[{ required: true, message: t("testData.valueRequired") }]}
           >
             <Input placeholder={t("testData.valuePlaceholder")} />
@@ -348,7 +349,7 @@ export function TestData() {
 
           <Form.Item
             name="category"
-            label={t("testData.categoryLabel")}
+            label={<LabelWithHint label={t("testData.categoryLabel")} hint="Группировка для удобного поиска. На работу агента не влияет." />}
           >
             <Select
               options={CATEGORIES.map((c) => ({
@@ -360,7 +361,7 @@ export function TestData() {
 
           <Form.Item
             name="description"
-            label={t("testData.descriptionLabel")}
+            label={<LabelWithHint label={t("testData.descriptionLabel")} hint="Подсказка для других пользователей: для чего это поле, откуда взято значение и т.д." />}
           >
             <Input.TextArea rows={2} placeholder={t("testData.descriptionPlaceholder")} />
           </Form.Item>

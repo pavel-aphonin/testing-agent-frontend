@@ -333,6 +333,7 @@ export interface RunCreateV2 {
   max_steps?: number;
   c_puct?: number;
   rollout_depth?: number;
+  scenario_ids?: string[];
 }
 
 // ----------------------------------------------------------------- Knowledge

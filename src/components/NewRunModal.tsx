@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Collapse, Form, InputNumber, Modal, Select, Tag, Upload } from "antd";
+import { Collapse, Form, InputNumber, Modal, Select, Switch, Tag, Upload } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { notify } from "@/utils/notify";
+import { LabelWithHint } from "@/components/LabelWithHint";
 
 import { createRunV2, uploadApp } from "@/api/runs";
 import { listActiveDevices } from "@/api/devices";
+import { listScenarios } from "@/api/scenarios";
 import { getMySettings } from "@/api/settings";
 import type { AppUploadResponse, RunCreateV2, RunMode, DeviceConfigRead } from "@/types";
 
@@ -27,6 +29,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
 
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadResult, setUploadResult] = useState<AppUploadResponse | null>(null);
+  const [useScenarios, setUseScenarios] = useState(false);
 
   const modeOptions: { value: RunMode; label: string }[] = [
     { value: "hybrid", label: t("newRunModal.modes.hybrid") },
@@ -47,6 +50,12 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
     enabled: open,
   });
 
+  const scenariosQuery = useQuery({
+    queryKey: ["scenarios"],
+    queryFn: listScenarios,
+    enabled: open && useScenarios,
+  });
+
   // Filter devices by the platform of the uploaded app.
   const filteredDevices = (devicesQuery.data ?? []).filter(
     (d: DeviceConfigRead) =>
@@ -58,6 +67,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
     form.resetFields();
     setUploadStatus("idle");
     setUploadResult(null);
+    setUseScenarios(false);
     if (settingsQuery.data) {
       form.setFieldsValue({
         mode: settingsQuery.data.default_mode,
@@ -122,6 +132,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             max_steps: values.max_steps,
             c_puct: values.c_puct,
             rollout_depth: values.rollout_depth,
+            scenario_ids: useScenarios ? (values.scenario_ids ?? []) : [],
           });
         }}
         initialValues={{
@@ -132,7 +143,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         }}
       >
         {/* ---------- File upload ---------- */}
-        <Form.Item label={t("newRunModal.uploadApp")}>
+        <Form.Item label={<LabelWithHint label={t("newRunModal.uploadApp")} hint="Загрузите файл сборки приложения. Поддерживаются .app.zip и .ipa для iOS, .apk для Android." />}>
           {uploadStatus === "success" && uploadResult ? (
             <Tag color="green">
               {"\u2713"} {uploadResult.bundle_id} (
@@ -165,7 +176,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         {/* ---------- Device config dropdown ---------- */}
         <Form.Item
           name="device_config_id"
-          label={t("newRunModal.selectDevice")}
+          label={<LabelWithHint label={t("newRunModal.selectDevice")} hint="Устройство + версия ОС, на котором будет запущено исследование. Список управляется администратором в разделе «Устройства»." />}
           rules={[{ required: true, message: t("newRunModal.selectDevicePlaceholder") }]}
         >
           <Select
@@ -180,14 +191,53 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         </Form.Item>
 
         {/* ---------- Mode ---------- */}
-        <Form.Item name="mode" label={t("newRunModal.mode")}>
+        <Form.Item name="mode" label={<LabelWithHint label={t("newRunModal.mode")} hint="AI — LLM решает каждое действие. MC — случайный перебор. Hybrid — LLM подсказывает, Monte-Carlo проверяет. Для демо выбирайте Hybrid." />}>
           <Select options={modeOptions} />
         </Form.Item>
 
         {/* ---------- Max steps ---------- */}
-        <Form.Item name="max_steps" label={t("newRunModal.maxSteps")}>
+        <Form.Item name="max_steps" label={<LabelWithHint label={t("newRunModal.maxSteps")} hint="Максимальное количество действий агента. Агент остановится раньше, если обнаружит, что все экраны исследованы." />}>
           <InputNumber min={1} max={10000} style={{ width: "100%" }} />
         </Form.Item>
+
+        {/* ---------- Scenarios toggle ---------- */}
+        <Form.Item
+          label={
+            <span>
+              Использовать сценарии{" "}
+              <Switch
+                size="small"
+                checked={useScenarios}
+                onChange={setUseScenarios}
+                style={{ marginLeft: 8 }}
+              />
+            </span>
+          }
+          style={{ marginBottom: useScenarios ? 8 : 16 }}
+        >
+          <span style={{ color: "#999", fontSize: 12 }}>
+            Агент выполнит выбранные сценарии, затем продолжит свободное исследование
+          </span>
+        </Form.Item>
+
+        {useScenarios && (
+          <Form.Item
+            name="scenario_ids"
+            rules={[
+              { required: true, message: "Выберите хотя бы один сценарий" },
+            ]}
+          >
+            <Select
+              mode="multiple"
+              placeholder="Выберите сценарии для выполнения"
+              loading={scenariosQuery.isLoading}
+              options={(scenariosQuery.data ?? [])
+                .filter((s) => s.is_active)
+                .map((s) => ({ value: s.id, label: s.title }))}
+              notFoundContent="Активных сценариев нет"
+            />
+          </Form.Item>
+        )}
 
         {/* ---------- Advanced settings ---------- */}
         <Collapse
