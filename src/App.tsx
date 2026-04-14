@@ -14,6 +14,7 @@ import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
+import { HelpPage } from "@/pages/Help";
 import { Login } from "@/pages/Login";
 import { Profile } from "@/pages/Profile";
 import { RunProgress } from "@/pages/RunProgress";
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="/runs/:id/results" element={<RunResults />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route
             path="/test-data"
             element={

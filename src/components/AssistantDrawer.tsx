@@ -1,9 +1,14 @@
 import { CloseOutlined, SendOutlined } from "@ant-design/icons";
 import { useMutation } from "@tanstack/react-query";
-import { Avatar, Button, Drawer, Input, Space, Spin, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { Avatar, Button, Drawer, Input, Space, Spin, Tag, Typography } from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
-import { chatWithAssistant, type AssistantMessage } from "@/api/assistant";
+import {
+  chatWithAssistant,
+  type AssistantContext,
+  type AssistantMessage,
+} from "@/api/assistant";
 import { notify } from "@/utils/notify";
 
 interface Props {
@@ -11,27 +16,47 @@ interface Props {
   onClose: () => void;
 }
 
-const SUGGESTED_QUESTIONS = [
-  "Как создать новый запуск?",
-  "Что такое режим Hybrid?",
-  "Как написать сценарий?",
-  "Что значит P0 и P1?",
-  "Как работают тестовые данные?",
-];
-
 /**
- * Right-side drawer with a chat to the in-app assistant. Triggered from
- * the header bubble. Conversation state lives here (not server-side) —
- * each turn posts the full thread to /api/assistant/chat.
+ * Right-side drawer with the AI helper. Sniffs the current route to
+ * figure out what the user is looking at and posts that context with
+ * each message — the assistant then has actual data (run summary,
+ * defects, scenario steps) to reason about, not just generic hints.
  *
- * No streaming; the assistant should answer in 1-3 seconds, so a single
- * spinner is fine. If the LLM is slow the bubble will show "Печатает…"
- * while we wait.
+ * Suggestions adapt to context: on a run page we offer "summarise
+ * defects", on the home / runs list we offer "what should I test
+ * next" type prompts.
  */
 export function AssistantDrawer({ open, onClose }: Props) {
+  const location = useLocation();
   const [history, setHistory] = useState<AssistantMessage[]>([]);
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Reset chat when drawer closes — fresh start each session.
+  useEffect(() => {
+    if (!open) {
+      setHistory([]);
+      setDraft("");
+    }
+  }, [open]);
+
+  // Detect context from current URL. Cheap heuristics — backend loads the
+  // actual data, we just point at the right object.
+  const ctx: AssistantContext = useMemo(() => {
+    const route = location.pathname;
+    const result: AssistantContext = { route };
+    // /runs/:id/{progress,results} → run_id
+    const runMatch = route.match(/\/runs\/([0-9a-f-]{36})/i);
+    if (runMatch) result.run_id = runMatch[1];
+    // /scenarios/:id (or /scenarios with selected id from page state — not in URL)
+    const scenarioMatch = route.match(/\/scenarios\/([0-9a-f-]{36})/i);
+    if (scenarioMatch) result.scenario_id = scenarioMatch[1];
+    return result;
+  }, [location.pathname]);
+
+  // Suggestions tuned to context. We refresh on each drawer open so the
+  // user sees relevant prompts for whatever page they're on.
+  const suggestions = useMemo(() => contextualSuggestions(ctx), [ctx]);
 
   const send = useMutation({
     mutationFn: (text: string) => {
@@ -40,7 +65,7 @@ export function AssistantDrawer({ open, onClose }: Props) {
         { role: "user", content: text },
       ];
       setHistory(next);
-      return chatWithAssistant(next);
+      return chatWithAssistant(next, ctx);
     },
     onSuccess: (resp) => {
       setHistory((prev) => [...prev, { role: "assistant", content: resp.answer }]);
@@ -50,12 +75,10 @@ export function AssistantDrawer({ open, onClose }: Props) {
         (err as { response?: { data?: { detail?: string } } })?.response?.data
           ?.detail ?? "Не удалось получить ответ";
       notify.error("Ассистент недоступен", detail);
-      // Roll back the optimistic user message so they can retry
       setHistory((prev) => prev.slice(0, -1));
     },
   });
 
-  // Scroll to bottom when new messages arrive or while typing.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -74,16 +97,23 @@ export function AssistantDrawer({ open, onClose }: Props) {
     send.mutate(q);
   };
 
+  const contextLabel = describeContext(ctx);
+
   return (
     <Drawer
       title={
         <Space>
           <Avatar style={{ background: "#EE3424" }}>М</Avatar>
-          <span>Ассистент</span>
+          <span>Помощник</span>
+          {contextLabel && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>
+              {contextLabel}
+            </Tag>
+          )}
         </Space>
       }
       placement="right"
-      width={420}
+      width={460}
       open={open}
       onClose={onClose}
       closeIcon={<CloseOutlined />}
@@ -99,7 +129,7 @@ export function AssistantDrawer({ open, onClose }: Props) {
                 handleSend();
               }
             }}
-            placeholder="Спросите про систему…"
+            placeholder="Что нужно сделать?"
             autoSize={{ minRows: 1, maxRows: 4 }}
             disabled={send.isPending}
           />
@@ -124,11 +154,13 @@ export function AssistantDrawer({ open, onClose }: Props) {
       >
         {history.length === 0 ? (
           <div>
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              Спросите что-нибудь о Маркове. Несколько примеров:
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 13 }}>
+              {contextLabel
+                ? `Я вижу: ${contextLabel}. Чем помочь?`
+                : "Опишите, с чем нужна помощь. Несколько идей:"}
             </Typography.Paragraph>
             <Space direction="vertical" size="small" style={{ width: "100%" }}>
-              {SUGGESTED_QUESTIONS.map((q) => (
+              {suggestions.map((q) => (
                 <Button
                   key={q}
                   size="small"
@@ -140,6 +172,9 @@ export function AssistantDrawer({ open, onClose }: Props) {
                 </Button>
               ))}
             </Space>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 16, fontSize: 11 }}>
+              Если вам нужно описание системы и инструкции — откройте раздел «Справка» в боковом меню.
+            </Typography.Paragraph>
           </div>
         ) : (
           history.map((msg, i) => <Message key={i} message={msg} />)
@@ -147,7 +182,7 @@ export function AssistantDrawer({ open, onClose }: Props) {
         {send.isPending && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
             <Avatar size="small" style={{ background: "#EE3424" }}>М</Avatar>
-            <Spin size="small" /> <Typography.Text type="secondary">Печатает…</Typography.Text>
+            <Spin size="small" /> <Typography.Text type="secondary">Думаю…</Typography.Text>
           </div>
         )}
       </div>
@@ -189,4 +224,50 @@ function Message({ message }: { message: AssistantMessage }) {
       </div>
     </div>
   );
+}
+
+function describeContext(ctx: AssistantContext): string | null {
+  if (ctx.run_id) return "запуск";
+  if (ctx.scenario_id) return "сценарий";
+  if (ctx.route?.startsWith("/knowledge")) return "база знаний";
+  if (ctx.route?.startsWith("/test-data")) return "тестовые данные";
+  if (ctx.route?.startsWith("/runs")) return "список запусков";
+  return null;
+}
+
+function contextualSuggestions(ctx: AssistantContext): string[] {
+  if (ctx.run_id) {
+    return [
+      "Кратко резюмируй результаты этого запуска",
+      "Какие дефекты самые критичные? Расставь приоритет",
+      "Какие из найденных багов могут быть false positive?",
+      "Что стоит протестировать дополнительно?",
+      "Сформируй описание для тикета по самому критичному багу",
+    ];
+  }
+  if (ctx.scenario_id) {
+    return [
+      "Проверь сценарий на ошибки и пропуски",
+      "Какие тестовые данные нужны для этого сценария?",
+      "Предложи негативные шаги для проверки валидации",
+    ];
+  }
+  if (ctx.route?.startsWith("/knowledge")) {
+    return [
+      "Подскажи, какие документы стоит загрузить для лучшего качества RAG",
+      "Какой документ устарел и его стоит обновить?",
+    ];
+  }
+  if (ctx.route?.startsWith("/runs")) {
+    return [
+      "Сравни последние запуски — где больше всего дефектов?",
+      "Какой запуск был наиболее результативным?",
+      "Что стоит запустить следующим?",
+    ];
+  }
+  return [
+    "С чего начать тестирование нового приложения?",
+    "Какие шаги предпринять, если агент находит мало багов?",
+    "Как лучше использовать сценарии и тестовые данные?",
+  ];
 }

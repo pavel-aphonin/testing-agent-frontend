@@ -7,6 +7,7 @@ import {
   MessageOutlined,
   MobileOutlined,
   PlayCircleOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
   TeamOutlined,
   UserOutlined,
@@ -94,6 +95,13 @@ export function AppLayout() {
       label: <Link to="/admin/users">{t("nav.users")}</Link>,
     });
   }
+
+  // Help section is available to everyone — includes the official manual.
+  items.push({
+    key: "/help",
+    icon: <QuestionCircleOutlined />,
+    label: <Link to="/help">Справка</Link>,
+  });
 
   const selectedKey =
     items
