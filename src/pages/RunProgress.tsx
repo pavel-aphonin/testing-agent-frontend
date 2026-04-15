@@ -33,6 +33,11 @@ interface SnapshotEvent {
     finished_at: string | null;
     error_message: string | null;
     stats: Record<string, unknown> | null;
+    /** V2-flow only — populated when the worker auto-provisioned a simulator. */
+    device_type: string | null;
+    os_version: string | null;
+    app_file_path: string | null;
+    platform: string | null;
   };
   screens: ScreenSummary[];
   edges: EdgeSummary[];
@@ -283,7 +288,22 @@ export function RunProgress() {
       return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
     });
 
-    return items;
+    // Deduplicate status_change events: the worker can emit "running" twice —
+    // once when the simulator boots, once when exploration starts. Same for
+    // any terminal status that races with the snapshot's finished_at-based
+    // item. Keep only the FIRST occurrence of each (type, new_status) pair.
+    const seenStatusChange = new Set<string>();
+    const deduped: TimelineEvent[] = [];
+    for (const item of items) {
+      if (item.type === "status_change" && item.new_status) {
+        const key = item.new_status;
+        if (seenStatusChange.has(key)) continue;
+        seenStatusChange.add(key);
+      }
+      deduped.push(item);
+    }
+
+    return deduped;
   }, [snapshot, events]);
 
   const latestStats = useMemo(() => {
@@ -311,6 +331,18 @@ export function RunProgress() {
             : t("runProgress.title")}
         </Typography.Title>
         <Tag color={STATUS_COLOR[currentStatus]}>{t(`runStatus.${currentStatus}`)}</Tag>
+        {/* Synthetic vs Real. V2 flow (worker auto-provisions a simulator)
+            means device_type and app_file_path are set. V1 flow is legacy —
+            the user plugs in a pre-existing device_id and we talk to it
+            directly. The badge helps support/QA see at a glance which kind
+            of run they're looking at without clicking into details. */}
+        {snapshot && (
+          snapshot.run.device_type && snapshot.run.app_file_path ? (
+            <Tag color="blue">{t("runProgress.realRun")}</Tag>
+          ) : (
+            <Tag color="geekblue">{t("runProgress.syntheticRun")}</Tag>
+          )
+        )}
         {/* Connection indicator only matters while the run is active. After
             the run reaches a terminal state, the WebSocket stays open but
             no events will arrive — showing "● Подключено" misleads the

@@ -122,7 +122,9 @@
     "mode": "Mode",
     "started": "Started",
     "finished": "Finished",
-    "noRunId": "No run ID in the URL"
+    "noRunId": "No run ID in the URL",
+    "realRun": "Real device",
+    "syntheticRun": "Synthetic"
   },
   "graph": {
     "visits": "visits: {{count}}",
