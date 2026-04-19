@@ -1,8 +1,9 @@
-import { DeleteOutlined, PlusOutlined, UserAddOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined, SettingOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
+  Drawer,
   Form,
   Modal,
   Popconfirm,
@@ -11,11 +12,13 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
 
+import { AttributeValuesEditor } from "@/components/AttributeValuesEditor";
 import { createInvitation } from "@/api/notifications";
 import { listAdminUsers } from "@/api/users";
 import { addMember, listMembers, removeMember } from "@/api/workspaces";
@@ -47,6 +50,7 @@ export function WorkspaceMembers() {
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [attrMember, setAttrMember] = useState<WorkspaceMemberRead | null>(null);
 
   const membersQ = useQuery({
     queryKey: ["ws-members", ws?.id ?? "none"],
@@ -108,21 +112,29 @@ export function WorkspaceMembers() {
     {
       title: "Действия",
       key: "actions",
-      width: 120,
-      render: (_: unknown, rec: WorkspaceMemberRead) => {
-        if (!canManage || rec.role === "owner") return null;
-        return (
-          <Popconfirm
-            title="Удалить участника?"
-            onConfirm={() => removeM.mutate({ userId: rec.user_id })}
-            okText="Удалить"
-            cancelText="Отмена"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        );
-      },
+      width: 160,
+      render: (_: unknown, rec: WorkspaceMemberRead) => (
+        <Space size="small">
+          <Tooltip title="Атрибуты участника">
+            <Button
+              size="small"
+              icon={<SettingOutlined />}
+              onClick={() => setAttrMember(rec)}
+            />
+          </Tooltip>
+          {canManage && rec.role !== "owner" && (
+            <Popconfirm
+              title="Удалить участника?"
+              onConfirm={() => removeM.mutate({ userId: rec.user_id })}
+              okText="Удалить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -153,6 +165,20 @@ export function WorkspaceMembers() {
         workspaceId={ws.id}
         existingUserIds={new Set(membersQ.data?.map((m) => m.user_id) ?? [])}
       />
+
+      <Drawer
+        title={attrMember ? `Атрибуты: ${attrMember.user_email}` : ""}
+        open={Boolean(attrMember)}
+        onClose={() => setAttrMember(null)}
+        width={560}
+      >
+        {attrMember && (
+          <AttributeValuesEditor
+            entityType="user_workspace"
+            entityId={attrMember.id}
+          />
+        )}
+      </Drawer>
     </>
   );
 }

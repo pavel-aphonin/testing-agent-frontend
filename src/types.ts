@@ -94,7 +94,14 @@ export interface WorkspaceRead extends WorkspaceBrief {
 
 // ---- Attributes ----
 
-export type AttributeDataType = "string" | "number" | "boolean" | "enum";
+export type AttributeDataType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "enum"
+  | "date"
+  | "link"
+  | "member";
 export type AttributeScope = "workspace" | "user";
 
 export interface AttributeRead {
@@ -108,6 +115,7 @@ export interface AttributeRead {
   scope: AttributeScope;
   applies_to: string;
   is_system: boolean;
+  is_required: boolean;
   parent_id: string | null;
   is_group: boolean;
   created_at: string;
@@ -123,6 +131,7 @@ export interface AttributeCreate {
   default_value?: unknown;
   scope?: AttributeScope;
   applies_to?: string;
+  is_required?: boolean;
   parent_id?: string | null;
   is_group?: boolean;
 }
@@ -132,6 +141,7 @@ export interface AttributeUpdate {
   description?: string;
   enum_values?: string[] | null;
   default_value?: unknown;
+  is_required?: boolean;
   parent_id?: string | null;
 }
 

@@ -28,6 +28,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 
+import { AttributeValuesEditor } from "@/components/AttributeValuesEditor";
 import { buildTree, flattenTree } from "@/utils/tree";
 
 import {
@@ -392,6 +393,19 @@ export function DictWorkspacesTab() {
             />
           </Form.Item>
         </Form>
+
+        {/* Attribute values — only when editing an existing non-group ws */}
+        {editing && !editing.is_group && (
+          <>
+            <Typography.Title level={5} style={{ marginTop: 24 }}>
+              Атрибуты пространства
+            </Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+              Значения сохраняются автоматически.
+            </Typography.Paragraph>
+            <AttributeValuesEditor entityType="workspace" entityId={editing.id} />
+          </>
+        )}
       </Drawer>
     </>
   );

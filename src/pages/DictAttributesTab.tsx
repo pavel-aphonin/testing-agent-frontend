@@ -10,6 +10,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  Checkbox,
+  DatePicker,
   Drawer,
   Form,
   Input,
@@ -23,6 +25,9 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import dayjs from "dayjs";
+
+import { listAdminUsers } from "@/api/users";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 
@@ -47,6 +52,9 @@ const TYPE_LABELS: Record<AttributeDataType, string> = {
   number: "Число",
   boolean: "Да/Нет",
   enum: "Список",
+  date: "Дата",
+  link: "Ссылка",
+  member: "Участник",
 };
 
 export function DictAttributesTab() {
@@ -125,6 +133,7 @@ export function DictAttributesTab() {
       data_type: "string",
       scope: "workspace",
       applies_to: "workspace",
+      is_required: false,
       parent_id: parentId,
     });
     setDrawerOpen(true);
@@ -141,8 +150,14 @@ export function DictAttributesTab() {
       data_type: attr.data_type,
       scope: attr.scope,
       applies_to: attr.applies_to,
-      enum_values: attr.enum_values,
-      default_value: attr.default_value,
+      enum_values: Array.isArray(attr.enum_values)
+        ? attr.enum_values.join(", ")
+        : attr.enum_values,
+      default_value:
+        attr.data_type === "date" && typeof attr.default_value === "string"
+          ? dayjs(attr.default_value)
+          : attr.default_value,
+      is_required: attr.is_required,
       parent_id: attr.parent_id,
     });
     setDrawerOpen(true);
@@ -157,11 +172,18 @@ export function DictAttributesTab() {
   }
 
   function handleSubmit(values: any) {
-    const enumValues = values.data_type === "enum"
+    const dt: AttributeDataType = values.data_type;
+    const enumValues = dt === "enum"
       ? (typeof values.enum_values === "string"
         ? values.enum_values.split(",").map((s: string) => s.trim()).filter(Boolean)
         : values.enum_values)
       : null;
+
+    // Normalize default_value based on data_type. dayjs → ISO for date.
+    let defaultVal: unknown = values.default_value ?? null;
+    if (dt === "date" && defaultVal && typeof defaultVal === "object" && "toISOString" in defaultVal) {
+      defaultVal = (defaultVal as dayjs.Dayjs).toISOString();
+    }
 
     if (editing) {
       updateM.mutate({
@@ -169,7 +191,8 @@ export function DictAttributesTab() {
         name: values.name,
         description: values.description || null,
         enum_values: enumValues,
-        default_value: values.default_value ?? null,
+        default_value: defaultVal,
+        is_required: !!values.is_required,
         parent_id: values.parent_id ?? null,
       });
     } else {
@@ -177,11 +200,12 @@ export function DictAttributesTab() {
         code: values.code,
         name: values.name,
         description: values.description || undefined,
-        data_type: values.data_type,
+        data_type: dt,
         enum_values: enumValues,
-        default_value: values.default_value ?? null,
+        default_value: defaultVal,
         scope: values.scope,
         applies_to: values.applies_to,
+        is_required: !!values.is_required,
         parent_id: values.parent_id ?? parentForNew ?? null,
         is_group: creatingGroup,
       };
@@ -202,6 +226,11 @@ export function DictAttributesTab() {
             <TagOutlined style={{ color: "#888" }} />
           )}
           <strong>{name}</strong>
+          {rec.is_required && !rec.is_group && (
+            <Tooltip title="Обязательный к заполнению">
+              <Tag color="red">*</Tag>
+            </Tooltip>
+          )}
           {rec.is_system && <Tag color="orange">Системный</Tag>}
         </Space>
       ),
@@ -262,6 +291,13 @@ export function DictAttributesTab() {
   ];
 
   const dataTypeWatch = Form.useWatch("data_type", form);
+
+  // Member-type attributes need a list of users to choose from.
+  const usersQ = useQuery({
+    queryKey: ["admin-users-for-member-attr"],
+    queryFn: listAdminUsers,
+    enabled: drawerOpen && dataTypeWatch === "member",
+  });
 
   return (
     <>
@@ -366,6 +402,9 @@ export function DictAttributesTab() {
                     { value: "number", label: "Число" },
                     { value: "boolean", label: "Да/Нет" },
                     { value: "enum", label: "Список значений" },
+                    { value: "date", label: "Дата" },
+                    { value: "link", label: "Ссылка (URL)" },
+                    { value: "member", label: "Участник (пользователь)" },
                   ]}
                 />
               </Form.Item>
@@ -381,14 +420,43 @@ export function DictAttributesTab() {
                 </Form.Item>
               )}
 
-              <Form.Item name="default_value" label="Значение по умолчанию">
+              <Form.Item
+                name="default_value"
+                label="Значение по умолчанию"
+                valuePropName={dataTypeWatch === "boolean" ? "checked" : "value"}
+              >
                 {dataTypeWatch === "boolean" ? (
                   <Switch />
                 ) : dataTypeWatch === "number" ? (
                   <InputNumber style={{ width: "100%" }} />
+                ) : dataTypeWatch === "date" ? (
+                  <DatePicker style={{ width: "100%" }} showTime />
+                ) : dataTypeWatch === "link" ? (
+                  <Input placeholder="https://example.com" />
+                ) : dataTypeWatch === "member" ? (
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder="Выберите пользователя"
+                    options={(usersQ.data ?? []).map((u) => ({
+                      value: u.id,
+                      label: u.email,
+                    }))}
+                    filterOption={(input, option) =>
+                      (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                    }
+                  />
                 ) : (
                   <Input />
                 )}
+              </Form.Item>
+
+              <Form.Item
+                name="is_required"
+                valuePropName="checked"
+                style={{ marginBottom: 16 }}
+              >
+                <Checkbox>Обязательный к заполнению</Checkbox>
               </Form.Item>
 
               <Form.Item
