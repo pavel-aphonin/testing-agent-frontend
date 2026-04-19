@@ -1,12 +1,15 @@
 import { Tabs, Typography } from "antd";
 import { useSearchParams } from "react-router-dom";
 
+import { DictAttributesTab } from "@/pages/DictAttributesTab";
 import { DictRolesTab } from "@/pages/DictRolesTab";
 import { DictWorkspacesTab } from "@/pages/DictWorkspacesTab";
 
 /**
  * Справочники — tabbed page. Each dictionary is a tab.
  * Active tab persists in the URL query string (?tab=roles).
+ *
+ * Each dictionary supports unlimited-depth tree grouping (parent_id).
  */
 export function Dictionaries() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +34,11 @@ export function Dictionaries() {
             key: "workspaces",
             label: "Рабочие пространства",
             children: <DictWorkspacesTab />,
+          },
+          {
+            key: "attributes",
+            label: "Атрибуты",
+            children: <DictAttributesTab />,
           },
         ]}
       />

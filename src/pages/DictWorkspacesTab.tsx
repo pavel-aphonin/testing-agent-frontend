@@ -1,5 +1,7 @@
 import {
   DeleteOutlined,
+  FolderAddOutlined,
+  FolderOutlined,
   InboxOutlined,
   PictureOutlined,
   PlusOutlined,
@@ -15,6 +17,7 @@ import {
   Form,
   Input,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -24,6 +27,8 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
+
+import { buildTree, flattenTree } from "@/utils/tree";
 
 import {
   adminListWorkspaces,
@@ -39,6 +44,11 @@ import { useAuthStore } from "@/store/auth";
 import type { WorkspaceRead } from "@/types";
 import { notify } from "@/utils/notify";
 
+interface WsRow extends WorkspaceRead {
+  children?: WsRow[];
+  key: string;
+}
+
 export function DictWorkspacesTab() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.user);
@@ -46,9 +56,35 @@ export function DictWorkspacesTab() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<WorkspaceRead | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [parentForNew, setParentForNew] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const wsQ = useQuery({ queryKey: ["admin-workspaces"], queryFn: adminListWorkspaces });
+
+  const treeData = useMemo<WsRow[]>(() => {
+    if (!wsQ.data) return [];
+    const tree = buildTree(wsQ.data);
+    function toRow(node: { item: WorkspaceRead; children: any[] }): WsRow {
+      return {
+        ...node.item,
+        key: node.item.id,
+        children: node.children.length > 0 ? node.children.map(toRow) : undefined,
+      };
+    }
+    return tree.map(toRow);
+  }, [wsQ.data]);
+
+  const parentOptions = useMemo(() => {
+    if (!wsQ.data) return [];
+    const flat = flattenTree(buildTree(wsQ.data));
+    return flat
+      .filter((n) => n.item.is_group)
+      .map((n) => ({
+        value: n.item.id,
+        label: "—".repeat(n.depth) + " " + n.item.name,
+      }));
+  }, [wsQ.data]);
 
   const createM = useMutation({
     mutationFn: createWorkspace,
@@ -113,18 +149,24 @@ export function DictWorkspacesTab() {
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
 
-  function openCreate() {
+  function openCreate(asGroup: boolean, parentId: string | null = null) {
     setEditing(null);
+    setCreatingGroup(asGroup);
+    setParentForNew(parentId);
     form.resetFields();
+    form.setFieldsValue({ parent_id: parentId });
     setDrawerOpen(true);
   }
 
   function openEdit(ws: WorkspaceRead) {
     setEditing(ws);
+    setCreatingGroup(ws.is_group);
+    setParentForNew(null);
     form.setFieldsValue({
       name: ws.name,
       code: ws.code,
       description: ws.description ?? "",
+      parent_id: ws.parent_id,
     });
     setDrawerOpen(true);
   }
@@ -132,27 +174,37 @@ export function DictWorkspacesTab() {
   function closeDrawer() {
     setDrawerOpen(false);
     setEditing(null);
+    setCreatingGroup(false);
+    setParentForNew(null);
     form.resetFields();
   }
 
   function handleSubmit(values: any) {
     if (editing) {
-      updateM.mutate({ id: editing.id, name: values.name, description: values.description || null });
+      updateM.mutate({
+        id: editing.id,
+        name: values.name,
+        description: values.description || null,
+        parent_id: values.parent_id ?? null,
+      } as any);
     } else {
       createM.mutate({
         code: values.code,
         name: values.name,
         description: values.description || undefined,
-      });
+        parent_id: values.parent_id ?? parentForNew ?? null,
+        is_group: creatingGroup,
+      } as any);
     }
   }
 
-  const columns: ColumnsType<WorkspaceRead> = [
+  const columns: ColumnsType<WsRow> = [
     {
       title: "Лого",
       key: "logo",
       width: 80,
-      render: (_: unknown, rec: WorkspaceRead) => {
+      render: (_: unknown, rec: WsRow) => {
+        if (rec.is_group) return <FolderOutlined style={{ fontSize: 20, color: "#EE3424" }} />;
         const url = workspaceLogoUrl(rec.id, rec.logo_path);
         return url ? (
           <Avatar shape="square" size={32} src={url} />
@@ -165,9 +217,10 @@ export function DictWorkspacesTab() {
       title: "Название",
       dataIndex: "name",
       key: "name",
-      render: (name: string, rec: WorkspaceRead) => (
+      render: (name: string, rec: WsRow) => (
         <Space>
           <strong>{name}</strong>
+          {rec.is_group && <Tag color="purple">Группа</Tag>}
           {rec.is_archived && <Tag color="orange">Архив</Tag>}
         </Space>
       ),
@@ -188,10 +241,15 @@ export function DictWorkspacesTab() {
     {
       title: "Действия",
       key: "actions",
-      width: 240,
-      render: (_: unknown, rec: WorkspaceRead) => (
+      width: 280,
+      render: (_: unknown, rec: WsRow) => (
         <Space size="small">
-          {myPerms.has("dictionaries.edit") && !rec.is_archived && (
+          {myPerms.has("dictionaries.create") && rec.is_group && (
+            <Tooltip title="Добавить в эту группу">
+              <Button size="small" icon={<PlusOutlined />} onClick={() => openCreate(false, rec.id)} />
+            </Tooltip>
+          )}
+          {myPerms.has("dictionaries.edit") && !rec.is_archived && !rec.is_group && (
             <Upload
               accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
               showUploadList={false}
@@ -256,24 +314,36 @@ export function DictWorkspacesTab() {
             Обновить
           </Button>
           {myPerms.has("dictionaries.create") && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Создать пространство
-            </Button>
+            <>
+              <Button icon={<FolderAddOutlined />} onClick={() => openCreate(true)}>
+                Создать группу
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(false)}>
+                Создать пространство
+              </Button>
+            </>
           )}
         </Space>
       </Space>
 
-      <Table<WorkspaceRead>
-        rowKey="id"
+      <Table<WsRow>
+        rowKey="key"
         columns={columns}
-        dataSource={wsQ.data}
+        dataSource={treeData}
         loading={wsQ.isLoading}
         pagination={false}
         scroll={{ x: "max-content" }}
+        expandable={{ defaultExpandAllRows: true }}
       />
 
       <Drawer
-        title={editing ? `Редактирование: ${editing.name}` : "Новое рабочее пространство"}
+        title={
+          editing
+            ? `Редактирование: ${editing.name}`
+            : creatingGroup
+            ? "Новая группа пространств"
+            : "Новое рабочее пространство"
+        }
         placement="right"
         width={480}
         open={drawerOpen}
@@ -298,20 +368,28 @@ export function DictWorkspacesTab() {
                 { pattern: /^[a-z][a-z0-9_-]*$/, message: "Только a-z, 0-9, -, _" },
               ]}
             >
-              <Input placeholder="alfa-mobile" />
+              <Input placeholder={creatingGroup ? "qa-team" : "alfa-mobile"} />
             </Form.Item>
           )}
 
           <Form.Item
             name="name"
-            label="Название"
+            label={creatingGroup || editing?.is_group ? "Название группы" : "Название"}
             rules={[{ required: true, message: "Обязательно" }]}
           >
-            <Input placeholder="Альфа-Мобайл QA" />
+            <Input placeholder={creatingGroup ? "QA команда" : "Альфа-Мобайл QA"} />
           </Form.Item>
 
           <Form.Item name="description" label="Описание">
-            <Input.TextArea rows={3} placeholder="Описание рабочего пространства" />
+            <Input.TextArea rows={3} placeholder="Описание" />
+          </Form.Item>
+
+          <Form.Item name="parent_id" label="Родительская группа">
+            <Select
+              allowClear
+              placeholder="Корневой уровень"
+              options={parentOptions}
+            />
           </Form.Item>
         </Form>
       </Drawer>

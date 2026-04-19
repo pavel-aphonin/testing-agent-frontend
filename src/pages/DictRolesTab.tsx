@@ -1,4 +1,12 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  FolderAddOutlined,
+  FolderOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  TagOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
@@ -8,6 +16,7 @@ import {
   Form,
   Input,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -27,15 +36,14 @@ import {
 } from "@/api/roles";
 import { useAuthStore } from "@/store/auth";
 import type { PermissionsRegistry, RoleRead, SectionMeta } from "@/types";
+import { buildTree, flattenTree } from "@/utils/tree";
 import { notify } from "@/utils/notify";
 
-/**
- * Справочники → Роли.
- *
- * Two-panel layout:
- *  - Left: table of existing roles with edit / delete
- *  - Right drawer: permission matrix (sections × CRUD checkboxes)
- */
+interface RoleRow extends RoleRead {
+  children?: RoleRow[];
+  key: string;
+}
+
 export function DictRolesTab() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
@@ -45,16 +53,41 @@ export function DictRolesTab() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRead | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [parentForNew, setParentForNew] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  // Data
   const rolesQ = useQuery({ queryKey: ["roles"], queryFn: listRoles });
   const registryQ = useQuery({ queryKey: ["perm-registry"], queryFn: getPermissionsRegistry });
+
+  const treeData = useMemo<RoleRow[]>(() => {
+    if (!rolesQ.data) return [];
+    const tree = buildTree(rolesQ.data);
+    function toRow(node: { item: RoleRead; children: any[] }): RoleRow {
+      return {
+        ...node.item,
+        key: node.item.id,
+        children: node.children.length > 0 ? node.children.map(toRow) : undefined,
+      };
+    }
+    return tree.map(toRow);
+  }, [rolesQ.data]);
+
+  const parentOptions = useMemo(() => {
+    if (!rolesQ.data) return [];
+    const flat = flattenTree(buildTree(rolesQ.data));
+    return flat
+      .filter((n) => n.item.is_group)
+      .map((n) => ({
+        value: n.item.id,
+        label: "—".repeat(n.depth) + " " + n.item.name,
+      }));
+  }, [rolesQ.data]);
 
   const createM = useMutation({
     mutationFn: createRole,
     onSuccess: () => {
-      notify.success("Роль создана");
+      notify.success("Создано");
       qc.invalidateQueries({ queryKey: ["roles"] });
       closeDrawer();
     },
@@ -62,10 +95,10 @@ export function DictRolesTab() {
   });
 
   const updateM = useMutation({
-    mutationFn: ({ id, ...rest }: { id: string; name?: string; description?: string; permissions?: string[] }) =>
+    mutationFn: ({ id, ...rest }: { id: string } & Record<string, unknown>) =>
       updateRole(id, rest),
     onSuccess: () => {
-      notify.success("Роль обновлена");
+      notify.success("Сохранено");
       qc.invalidateQueries({ queryKey: ["roles"] });
       closeDrawer();
     },
@@ -75,26 +108,31 @@ export function DictRolesTab() {
   const deleteM = useMutation({
     mutationFn: deleteRole,
     onSuccess: () => {
-      notify.success("Роль удалена");
+      notify.success("Удалено");
       qc.invalidateQueries({ queryKey: ["roles"] });
     },
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
 
-  function openCreate() {
+  function openCreate(asGroup: boolean, parentId: string | null = null) {
     setEditingRole(null);
+    setCreatingGroup(asGroup);
+    setParentForNew(parentId);
     form.resetFields();
-    form.setFieldsValue({ permissions: [] });
+    form.setFieldsValue({ permissions: [], parent_id: parentId });
     setDrawerOpen(true);
   }
 
   function openEdit(role: RoleRead) {
     setEditingRole(role);
+    setCreatingGroup(role.is_group);
+    setParentForNew(null);
     form.setFieldsValue({
       name: role.name,
       code: role.code,
       description: role.description ?? "",
       permissions: role.permissions,
+      parent_id: role.parent_id,
     });
     setDrawerOpen(true);
   }
@@ -102,37 +140,44 @@ export function DictRolesTab() {
   function closeDrawer() {
     setDrawerOpen(false);
     setEditingRole(null);
+    setCreatingGroup(false);
+    setParentForNew(null);
     form.resetFields();
   }
 
   function handleSubmit(values: any) {
-    const perms: string[] = values.permissions ?? [];
     if (editingRole) {
       updateM.mutate({
         id: editingRole.id,
         name: values.name,
         description: values.description || null,
-        permissions: perms,
+        permissions: editingRole.is_group ? [] : (values.permissions ?? []),
+        parent_id: values.parent_id ?? null,
       });
     } else {
       createM.mutate({
         name: values.name,
         code: values.code,
         description: values.description || undefined,
-        permissions: perms,
+        permissions: creatingGroup ? [] : (values.permissions ?? []),
+        parent_id: values.parent_id ?? parentForNew ?? null,
+        is_group: creatingGroup,
       });
     }
   }
 
-  // ── Table columns ───────────────────────────────────────────────────────
-
-  const columns: ColumnsType<RoleRead> = [
+  const columns: ColumnsType<RoleRow> = [
     {
       title: "Название",
       dataIndex: "name",
       key: "name",
-      render: (name: string, rec: RoleRead) => (
+      render: (name: string, rec: RoleRow) => (
         <Space>
+          {rec.is_group ? (
+            <FolderOutlined style={{ color: "#EE3424" }} />
+          ) : (
+            <TagOutlined style={{ color: "#888" }} />
+          )}
           <strong>{name}</strong>
           {rec.is_system && <Tag color="orange">Системная</Tag>}
         </Space>
@@ -142,7 +187,7 @@ export function DictRolesTab() {
       title: "Код",
       dataIndex: "code",
       key: "code",
-      width: 140,
+      width: 160,
       render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
     },
     {
@@ -150,7 +195,7 @@ export function DictRolesTab() {
       dataIndex: "permissions",
       key: "perm_count",
       width: 120,
-      render: (perms: string[]) => perms.length,
+      render: (perms: string[], rec: RoleRow) => (rec.is_group ? "—" : perms.length),
     },
     {
       title: "Описание",
@@ -161,9 +206,18 @@ export function DictRolesTab() {
     {
       title: "Действия",
       key: "actions",
-      width: 120,
-      render: (_: unknown, rec: RoleRead) => (
+      width: 200,
+      render: (_: unknown, rec: RoleRow) => (
         <Space size="small">
+          {myPerms.has("dictionaries.create") && rec.is_group && (
+            <Tooltip title="Добавить в эту группу">
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => openCreate(false, rec.id)}
+              />
+            </Tooltip>
+          )}
           {myPerms.has("dictionaries.edit") && (
             <Tooltip title="Редактировать">
               <Button
@@ -175,7 +229,7 @@ export function DictRolesTab() {
           )}
           {myPerms.has("dictionaries.delete") && !rec.is_system && (
             <Popconfirm
-              title="Удалить эту роль?"
+              title="Удалить?"
               onConfirm={() => deleteM.mutate(rec.id)}
               okText="Удалить"
               cancelText="Отмена"
@@ -200,24 +254,36 @@ export function DictRolesTab() {
             {t("common.refresh")}
           </Button>
           {myPerms.has("dictionaries.create") && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Создать роль
-            </Button>
+            <>
+              <Button icon={<FolderAddOutlined />} onClick={() => openCreate(true)}>
+                Создать группу
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(false)}>
+                Создать роль
+              </Button>
+            </>
           )}
         </Space>
       </Space>
 
-      <Table<RoleRead>
-        rowKey="id"
+      <Table<RoleRow>
+        rowKey="key"
         columns={columns}
-        dataSource={rolesQ.data}
+        dataSource={treeData}
         loading={rolesQ.isLoading}
         pagination={false}
         scroll={{ x: "max-content" }}
+        expandable={{ defaultExpandAllRows: true }}
       />
 
       <Drawer
-        title={editingRole ? `Редактирование: ${editingRole.name}` : "Новая роль"}
+        title={
+          editingRole
+            ? `Редактирование: ${editingRole.name}`
+            : creatingGroup
+            ? "Новая группа ролей"
+            : "Новая роль"
+        }
         placement="right"
         width={640}
         open={drawerOpen}
@@ -235,10 +301,10 @@ export function DictRolesTab() {
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item
             name="name"
-            label="Название роли"
+            label={creatingGroup || editingRole?.is_group ? "Название группы" : "Название роли"}
             rules={[{ required: true, message: "Обязательно" }]}
           >
-            <Input placeholder="QA Lead" />
+            <Input placeholder={creatingGroup ? "Системные роли" : "QA Lead"} />
           </Form.Item>
 
           {!editingRole && (
@@ -250,37 +316,44 @@ export function DictRolesTab() {
                 { pattern: /^[a-z][a-z0-9_]*$/, message: "Только a-z, 0-9, _" },
               ]}
             >
-              <Input placeholder="qa_lead" />
+              <Input placeholder={creatingGroup ? "system_roles" : "qa_lead"} />
             </Form.Item>
           )}
 
           <Form.Item name="description" label="Описание">
-            <Input.TextArea rows={2} placeholder="Описание роли" />
+            <Input.TextArea rows={2} />
           </Form.Item>
 
-          <Typography.Title level={5} style={{ marginTop: 16 }}>
-            Разрешения
-          </Typography.Title>
-
-          {registryQ.data && (
-            <PermissionMatrixConnected
-              form={form}
-              registry={registryQ.data}
-              lang={lang}
+          <Form.Item name="parent_id" label="Родительская группа">
+            <Select
+              allowClear
+              placeholder="Корневой уровень"
+              options={parentOptions}
             />
-          )}
-
-          {/* Hidden form item so the value propagates on submit */}
-          <Form.Item name="permissions" hidden>
-            <Input />
           </Form.Item>
+
+          {!(creatingGroup || editingRole?.is_group) && (
+            <>
+              <Typography.Title level={5} style={{ marginTop: 16 }}>
+                Разрешения
+              </Typography.Title>
+              {registryQ.data && (
+                <PermissionMatrixConnected
+                  form={form}
+                  registry={registryQ.data}
+                  lang={lang}
+                />
+              )}
+              <Form.Item name="permissions" hidden>
+                <Input />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Drawer>
     </>
   );
 }
-
-// ── Form-connected wrapper (useWatch must be at top level of a component) ──
 
 function PermissionMatrixConnected({
   form,
@@ -302,8 +375,6 @@ function PermissionMatrixConnected({
     />
   );
 }
-
-// ── Permission matrix ─────────────────────────────────────────────────────
 
 interface PermissionMatrixProps {
   registry: PermissionsRegistry;

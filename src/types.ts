@@ -36,6 +36,8 @@ export interface RoleRead {
   description: string | null;
   is_system: boolean;
   permissions: string[];
+  parent_id: string | null;
+  is_group: boolean;
   created_at: string;
   updated_at: string | null;
 }
@@ -45,12 +47,15 @@ export interface RoleCreate {
   code: string;
   description?: string;
   permissions: string[];
+  parent_id?: string | null;
+  is_group?: boolean;
 }
 
 export interface RoleUpdate {
   name?: string;
   description?: string;
   permissions?: string[];
+  parent_id?: string | null;
 }
 
 export interface PermissionMeta {
@@ -80,8 +85,62 @@ export interface WorkspaceBrief {
 export interface WorkspaceRead extends WorkspaceBrief {
   description: string | null;
   is_archived: boolean;
+  parent_id: string | null;
+  is_group: boolean;
   created_by_user_id: string | null;
   created_at: string;
+  updated_at: string | null;
+}
+
+// ---- Attributes ----
+
+export type AttributeDataType = "string" | "number" | "boolean" | "enum";
+export type AttributeScope = "workspace" | "user";
+
+export interface AttributeRead {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  data_type: AttributeDataType;
+  enum_values: string[] | null;
+  default_value: unknown;
+  scope: AttributeScope;
+  applies_to: string;
+  is_system: boolean;
+  parent_id: string | null;
+  is_group: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface AttributeCreate {
+  code: string;
+  name: string;
+  description?: string;
+  data_type: AttributeDataType;
+  enum_values?: string[] | null;
+  default_value?: unknown;
+  scope?: AttributeScope;
+  applies_to?: string;
+  parent_id?: string | null;
+  is_group?: boolean;
+}
+
+export interface AttributeUpdate {
+  name?: string;
+  description?: string;
+  enum_values?: string[] | null;
+  default_value?: unknown;
+  parent_id?: string | null;
+}
+
+export interface AttributeValueRead {
+  id: string;
+  attribute_id: string;
+  entity_type: "workspace" | "user_workspace";
+  entity_id: string;
+  value: unknown;
   updated_at: string | null;
 }
 
