@@ -50,7 +50,8 @@
     "knowledgeBase": "Knowledge base",
     "scenarios": "Scenarios",
     "users": "Users",
-    "testData": "Test data"
+    "testData": "Test data",
+    "dictionaries": "Dictionaries"
   },
   "runs": {
     "title": "Runs",

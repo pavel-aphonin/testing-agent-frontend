@@ -1,7 +1,8 @@
 // Mirror of the backend Pydantic schemas. Keep in sync with
 // testing-agent-backend/app/schemas/*.py
 
-export type UserRole = "viewer" | "tester" | "admin";
+/** Legacy role code. Kept for backward compat; new code checks permissions. */
+export type UserRole = string;
 
 export interface CurrentUser {
   id: string;
@@ -9,7 +10,11 @@ export interface CurrentUser {
   is_active: boolean;
   is_superuser: boolean;
   is_verified: boolean;
-  role: UserRole;
+  role: string;
+  role_id: string | null;
+  role_name: string;
+  role_code: string;
+  permissions: string[];
   must_change_password: boolean;
 }
 
@@ -18,8 +23,75 @@ export interface AdminUser extends CurrentUser {}
 export interface AdminUserCreate {
   email: string;
   password: string;
-  role: UserRole;
+  role_id: string;
   must_change_password: boolean;
+}
+
+// ---- RBAC Roles ----
+
+export interface RoleRead {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  is_system: boolean;
+  permissions: string[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface RoleCreate {
+  name: string;
+  code: string;
+  description?: string;
+  permissions: string[];
+}
+
+export interface RoleUpdate {
+  name?: string;
+  description?: string;
+  permissions?: string[];
+}
+
+export interface PermissionMeta {
+  ru: string;
+  en: string;
+}
+
+export interface SectionMeta {
+  label_ru: string;
+  label_en: string;
+  permissions: Record<string, PermissionMeta>;
+}
+
+export interface PermissionsRegistry {
+  sections: Record<string, SectionMeta>;
+}
+
+// ---- Workspaces ----
+
+export interface WorkspaceBrief {
+  id: string;
+  code: string;
+  name: string;
+  logo_path: string | null;
+}
+
+export interface WorkspaceRead extends WorkspaceBrief {
+  description: string | null;
+  is_archived: boolean;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface WorkspaceMemberRead {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  user_email: string;
+  role: string;
+  joined_at: string;
 }
 
 export type RunMode = "ai" | "mc" | "hybrid";

@@ -50,7 +50,8 @@
     "knowledgeBase": "База знаний",
     "scenarios": "Сценарии",
     "users": "Пользователи",
-    "testData": "Тестовые данные"
+    "testData": "Тестовые данные",
+    "dictionaries": "Справочники"
   },
   "runs": {
     "title": "Запуски",

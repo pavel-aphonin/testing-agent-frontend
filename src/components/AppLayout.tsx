@@ -3,6 +3,7 @@ import {
   BookOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
+  FileTextOutlined,
   LogoutOutlined,
   MessageOutlined,
   MobileOutlined,
@@ -12,20 +13,21 @@ import {
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Avatar, Layout, Menu, Tooltip, Typography } from "antd";
-import { useState } from "react";
+import { Avatar, Layout, Menu, Space, Tooltip, Typography } from "antd";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { AssistantDrawer } from "@/components/AssistantDrawer";
 import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuthStore } from "@/store/auth";
 
 const { Header, Sider, Content } = Layout;
 
 const SIDER_WIDTH = 240;
-const APP_VERSION = "0.2.0";
-const APP_BUILD = "2026.04.12";
+const APP_VERSION = "0.3.0";
+const APP_BUILD = "2026.04.19";
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -36,31 +38,46 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
 
+  // Permission set for the current user
+  const perms = useMemo(
+    () => new Set(user?.permissions ?? []),
+    [user?.permissions],
+  );
+
+  const hasPerm = (p: string) => perms.has(p);
+
   if (!user) return null;
 
-  const isAdmin = user.role === "admin";
+  // ── Build sidebar items based on permissions ────────────────────────────
+  const items: { key: string; icon: React.ReactNode; label: React.ReactNode }[] = [];
 
-  const items = [
-    {
+  // Runs — everyone who can view
+  if (hasPerm("runs.view")) {
+    items.push({
       key: "/runs",
       icon: <ExperimentOutlined />,
       label: <Link to="/runs">{t("nav.runs")}</Link>,
-    },
-    {
+    });
+  }
+
+  // Settings
+  if (hasPerm("settings.view")) {
+    items.push({
       key: "/settings",
       icon: <SettingOutlined />,
       label: <Link to="/settings">{t("nav.settings")}</Link>,
-    },
-    {
-      key: "/profile",
-      icon: <UserOutlined />,
-      label: <Link to="/profile">{t("nav.profile")}</Link>,
-    },
-  ];
+    });
+  }
 
-  const isTesterOrAdmin = user.role === "tester" || user.role === "admin";
+  // Profile — always available
+  items.push({
+    key: "/profile",
+    icon: <UserOutlined />,
+    label: <Link to="/profile">{t("nav.profile")}</Link>,
+  });
 
-  if (isTesterOrAdmin) {
+  // Test data
+  if (hasPerm("test_data.view")) {
     items.push({
       key: "/test-data",
       icon: <DatabaseOutlined />,
@@ -68,27 +85,44 @@ export function AppLayout() {
     });
   }
 
-  if (isAdmin) {
+  // Devices
+  if (hasPerm("devices.view")) {
     items.push({
       key: "/admin/devices",
       icon: <MobileOutlined />,
       label: <Link to="/admin/devices">{t("adminDevices.title")}</Link>,
     });
+  }
+
+  // LLM Models
+  if (hasPerm("models.view")) {
     items.push({
       key: "/admin/models",
       icon: <ApiOutlined />,
       label: <Link to="/admin/models">{t("nav.llmModels")}</Link>,
     });
+  }
+
+  // Knowledge base
+  if (hasPerm("knowledge.view")) {
     items.push({
       key: "/admin/knowledge",
       icon: <BookOutlined />,
       label: <Link to="/admin/knowledge">{t("nav.knowledgeBase")}</Link>,
     });
+  }
+
+  // Scenarios
+  if (hasPerm("scenarios.view")) {
     items.push({
       key: "/admin/scenarios",
       icon: <PlayCircleOutlined />,
       label: <Link to="/admin/scenarios">{t("nav.scenarios")}</Link>,
     });
+  }
+
+  // Users
+  if (hasPerm("users.view")) {
     items.push({
       key: "/admin/users",
       icon: <TeamOutlined />,
@@ -96,7 +130,16 @@ export function AppLayout() {
     });
   }
 
-  // Help section is available to everyone — includes the official manual.
+  // Dictionaries (Справочники)
+  if (hasPerm("dictionaries.view")) {
+    items.push({
+      key: "/dictionaries",
+      icon: <FileTextOutlined />,
+      label: <Link to="/dictionaries">{t("nav.dictionaries")}</Link>,
+    });
+  }
+
+  // Help — always available
   items.push({
     key: "/help",
     icon: <QuestionCircleOutlined />,
@@ -244,7 +287,7 @@ export function AppLayout() {
             }}
           >
             {collapsed ? (
-              <Tooltip title={`${user.email}\n${t(`roles.${user.role}`)}`} placement="right">
+              <Tooltip title={`${user.email}\n${user.role_name || user.role}`} placement="right">
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <Avatar
                     size="small"
@@ -269,7 +312,7 @@ export function AppLayout() {
                       {user.email}
                     </Typography.Text>
                     <Typography.Text style={{ color: "#888", fontSize: 11 }}>
-                      {t(`roles.${user.role}`)}
+                      {user.role_name || t(`roles.${user.role}`)}
                     </Typography.Text>
                   </div>
                 </div>
@@ -290,13 +333,15 @@ export function AppLayout() {
             padding: "0 24px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             borderBottom: "1px solid #f0f0f0",
             height: 48,
             lineHeight: "48px",
-            gap: 24,
           }}
         >
+          <WorkspaceSwitcher />
+
+          <Space size={24}>
           <WorkerStatusBadge />
 
           <Tooltip title="Открыть ассистента" placement="bottom">
@@ -332,6 +377,7 @@ export function AppLayout() {
           >
             <LogoutOutlined /> {t("auth.signOut")}
           </a>
+          </Space>
         </Header>
 
         <AssistantDrawer

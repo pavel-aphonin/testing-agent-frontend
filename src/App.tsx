@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { fetchMe } from "@/api/auth";
 import { getMySettings } from "@/api/settings";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -14,6 +15,7 @@ import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
+import { Dictionaries } from "@/pages/Dictionaries";
 import { HelpPage } from "@/pages/Help";
 import { Login } from "@/pages/Login";
 import { Profile } from "@/pages/Profile";
@@ -30,10 +32,23 @@ export default function App() {
   const { i18n } = useTranslation();
   const isAuthed = useAuthStore((s) => Boolean(s.token));
 
+  // Refresh user data (permissions, role) on every page load so that
+  // permission changes by admins take effect without re-login.
+  const setUser = useAuthStore((s) => s.setUser);
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    enabled: isAuthed,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (meQuery.data) {
+      setUser(meQuery.data);
+    }
+  }, [meQuery.data, setUser]);
+
   // Once the user is logged in, fetch their saved language and apply it.
-  // Anonymous users keep whatever the browser detector picked. We only
-  // fetch when authed so the request doesn't hit /api/settings on the
-  // login screen and 401 in the network tab.
   const settingsQuery = useQuery({
     queryKey: ["my-settings"],
     queryFn: getMySettings,
@@ -130,6 +145,14 @@ export default function App() {
             element={
               <ProtectedRoute requireRole="admin">
                 <AdminScenarios />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dictionaries/*"
+            element={
+              <ProtectedRoute requirePermission="dictionaries.view">
+                <Dictionaries />
               </ProtectedRoute>
             }
           />

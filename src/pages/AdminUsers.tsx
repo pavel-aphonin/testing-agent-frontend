@@ -10,6 +10,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -21,13 +22,17 @@ import { notify } from "@/utils/notify";
 import { deleteAdminUser, listAdminUsers } from "@/api/users";
 import { NewUserModal } from "@/components/NewUserModal";
 import { useAuthStore } from "@/store/auth";
-import type { AdminUser, UserRole } from "@/types";
+import type { AdminUser } from "@/types";
 
-const ROLE_COLOR: Record<UserRole, string> = {
-  viewer: "default",
-  tester: "blue",
-  admin: "red",
-};
+/** Color for the role tag. System roles get dedicated colors; custom roles get cyan. */
+function roleColor(code: string): string {
+  switch (code) {
+    case "viewer": return "default";
+    case "tester": return "blue";
+    case "admin": return "red";
+    default: return "cyan";
+  }
+}
 
 export function AdminUsers() {
   const { t } = useTranslation();
@@ -62,10 +67,15 @@ export function AdminUsers() {
     },
     {
       title: t("adminUsers.columns.role"),
-      dataIndex: "role",
       key: "role",
-      width: 120,
-      render: (role: UserRole) => <Tag color={ROLE_COLOR[role]}>{t(`roles.${role}`)}</Tag>,
+      width: 160,
+      render: (_: unknown, rec: AdminUser) => (
+        <Tooltip title={`${rec.permissions?.length ?? 0} разрешений`}>
+          <Tag color={roleColor(rec.role_code || rec.role)}>
+            {rec.role_name || rec.role}
+          </Tag>
+        </Tooltip>
+      ),
     },
     {
       title: t("adminUsers.columns.active"),

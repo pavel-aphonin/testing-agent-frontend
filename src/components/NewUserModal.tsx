@@ -1,11 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Form, Input, Modal, Select, Switch } from "antd";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
+import { listRoles } from "@/api/roles";
 import { createAdminUser } from "@/api/users";
+import type { AdminUserCreate } from "@/types";
 import { notify } from "@/utils/notify";
-import type { AdminUserCreate, UserRole } from "@/types";
 
 interface NewUserModalProps {
   open: boolean;
@@ -17,17 +18,29 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   const [form] = Form.useForm<AdminUserCreate>();
   const queryClient = useQueryClient();
 
-  const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-    { value: "viewer", label: t("newUserModal.roles.viewer") },
-    { value: "tester", label: t("newUserModal.roles.tester") },
-    { value: "admin", label: t("newUserModal.roles.admin") },
-  ];
+  // Fetch roles from the dictionaries API
+  const rolesQ = useQuery({
+    queryKey: ["roles"],
+    queryFn: listRoles,
+    enabled: open,
+  });
+
+  const roleOptions = (rolesQ.data ?? []).map((r) => ({
+    value: r.id,
+    label: `${r.name} (${r.code})`,
+  }));
+
+  // Default to "tester" system role
+  const defaultRoleId = rolesQ.data?.find((r) => r.code === "tester")?.id;
 
   useEffect(() => {
     if (open) {
       form.resetFields();
+      if (defaultRoleId) {
+        form.setFieldsValue({ role_id: defaultRoleId });
+      }
     }
-  }, [open, form]);
+  }, [open, form, defaultRoleId]);
 
   const mutation = useMutation({
     mutationFn: createAdminUser,
@@ -60,7 +73,6 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
         layout="vertical"
         onFinish={(values) => mutation.mutate(values)}
         initialValues={{
-          role: "tester",
           must_change_password: true,
         }}
       >
@@ -87,8 +99,16 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
           <Input.Password autoComplete="new-password" />
         </Form.Item>
 
-        <Form.Item name="role" label={t("newUserModal.role")}>
-          <Select options={ROLE_OPTIONS} />
+        <Form.Item
+          name="role_id"
+          label={t("newUserModal.role")}
+          rules={[{ required: true, message: "Выберите роль" }]}
+        >
+          <Select
+            options={roleOptions}
+            loading={rolesQ.isLoading}
+            placeholder="Выберите роль"
+          />
         </Form.Item>
 
         <Form.Item
