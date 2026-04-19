@@ -1,5 +1,6 @@
 import {
   ApiOutlined,
+  AppstoreOutlined,
   BookOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
@@ -19,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { AssistantDrawer } from "@/components/AssistantDrawer";
+import { NotificationsBell } from "@/components/NotificationsBell";
 import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuthStore } from "@/store/auth";
@@ -74,6 +76,13 @@ export function AppLayout() {
     key: "/profile",
     icon: <UserOutlined />,
     label: <Link to="/profile">{t("nav.profile")}</Link>,
+  });
+
+  // Workspace members — always available (any member can view)
+  items.push({
+    key: "/workspace/members",
+    icon: <AppstoreOutlined />,
+    label: <Link to="/workspace/members">Участники пространства</Link>,
   });
 
   // Test data
@@ -343,6 +352,8 @@ export function AppLayout() {
 
           <Space size={24}>
           <WorkerStatusBadge />
+
+          <NotificationsBell />
 
           <Tooltip title="Открыть ассистента" placement="bottom">
             <a

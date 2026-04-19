@@ -94,6 +94,31 @@ export interface WorkspaceMemberRead {
   joined_at: string;
 }
 
+// ---- Notifications + Invitations ----
+
+export interface NotificationRead {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  payload: Record<string, unknown> | null;
+  action_url: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface InvitationRead {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  inviter_email: string;
+  invitee_user_id: string;
+  role: string;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  responded_at: string | null;
+}
+
 export type RunMode = "ai" | "mc" | "hybrid";
 export type RunStatus =
   | "pending"
@@ -409,6 +434,7 @@ export interface RunCreateV2 {
   rollout_depth?: number;
   scenario_ids?: string[];
   pbt_enabled?: boolean;
+  workspace_id?: string | null;
 }
 
 // ----------------------------------------------------------------- Knowledge

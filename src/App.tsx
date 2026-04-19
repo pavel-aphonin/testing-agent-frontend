@@ -16,6 +16,7 @@ import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
+import { WorkspaceMembers } from "@/pages/WorkspaceMembers";
 import { HelpPage } from "@/pages/Help";
 import { Login } from "@/pages/Login";
 import { Profile } from "@/pages/Profile";
@@ -103,7 +104,7 @@ export default function App() {
           <Route
             path="/test-data"
             element={
-              <ProtectedRoute requireRole="tester">
+              <ProtectedRoute requirePermission="test_data.view">
                 <TestData />
               </ProtectedRoute>
             }
@@ -111,7 +112,7 @@ export default function App() {
           <Route
             path="/admin/users"
             element={
-              <ProtectedRoute requireRole="admin">
+              <ProtectedRoute requirePermission="users.view">
                 <AdminUsers />
               </ProtectedRoute>
             }
@@ -119,7 +120,7 @@ export default function App() {
           <Route
             path="/admin/models"
             element={
-              <ProtectedRoute requireRole="admin">
+              <ProtectedRoute requirePermission="models.view">
                 <AdminModels />
               </ProtectedRoute>
             }
@@ -127,7 +128,7 @@ export default function App() {
           <Route
             path="/admin/devices"
             element={
-              <ProtectedRoute requireRole="admin">
+              <ProtectedRoute requirePermission="devices.view">
                 <AdminDevices />
               </ProtectedRoute>
             }
@@ -135,7 +136,7 @@ export default function App() {
           <Route
             path="/admin/knowledge"
             element={
-              <ProtectedRoute requireRole="admin">
+              <ProtectedRoute requirePermission="knowledge.view">
                 <AdminKnowledge />
               </ProtectedRoute>
             }
@@ -143,7 +144,7 @@ export default function App() {
           <Route
             path="/admin/scenarios"
             element={
-              <ProtectedRoute requireRole="admin">
+              <ProtectedRoute requirePermission="scenarios.view">
                 <AdminScenarios />
               </ProtectedRoute>
             }
@@ -155,6 +156,10 @@ export default function App() {
                 <Dictionaries />
               </ProtectedRoute>
             }
+          />
+          <Route
+            path="/workspace/members"
+            element={<WorkspaceMembers />}
           />
         </Route>
 

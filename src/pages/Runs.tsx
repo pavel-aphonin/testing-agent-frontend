@@ -27,6 +27,7 @@ import { notify } from "@/utils/notify";
 import { deleteRun, listRuns } from "@/api/runs";
 import { NewRunModal } from "@/components/NewRunModal";
 import { useAuthStore } from "@/store/auth";
+import { useWorkspaceStore } from "@/store/workspace";
 import type { Run, RunStatus } from "@/types";
 
 const STATUS_COLOR: Record<RunStatus, string> = {
@@ -47,11 +48,12 @@ export function Runs() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const workspace = useWorkspaceStore((s) => s.current);
   const [modalOpen, setModalOpen] = useState(false);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["runs"],
-    queryFn: listRuns,
+    queryKey: ["runs", workspace?.id ?? "none"],
+    queryFn: () => listRuns(workspace?.id),
   });
 
   const deleteMutation = useMutation({

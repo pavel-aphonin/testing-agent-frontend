@@ -9,6 +9,7 @@ import { notify } from "@/utils/notify";
 import { LabelWithHint } from "@/components/LabelWithHint";
 
 import { createRunV2, uploadApp } from "@/api/runs";
+import { useWorkspaceStore } from "@/store/workspace";
 import { listActiveDevices } from "@/api/devices";
 import { listScenarios } from "@/api/scenarios";
 import { getMySettings } from "@/api/settings";
@@ -25,6 +26,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<RunCreateV2>();
   const queryClient = useQueryClient();
+  const workspace = useWorkspaceStore((s) => s.current);
   const navigate = useNavigate();
 
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
@@ -137,6 +139,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             rollout_depth: values.rollout_depth,
             scenario_ids: useScenarios ? (values.scenario_ids ?? []) : [],
             pbt_enabled: pbtEnabled,
+            workspace_id: workspace?.id,
           });
         }}
         initialValues={{

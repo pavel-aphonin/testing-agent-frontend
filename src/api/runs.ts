@@ -1,8 +1,9 @@
 import { apiClient } from "@/api/client";
 import type { AppUploadResponse, Run, RunCreate, RunCreateV2, RunResults } from "@/types";
 
-export async function listRuns(): Promise<Run[]> {
-  const response = await apiClient.get<Run[]>("/api/runs");
+export async function listRuns(workspaceId?: string | null): Promise<Run[]> {
+  const params = workspaceId ? { workspace_id: workspaceId } : {};
+  const response = await apiClient.get<Run[]>("/api/runs", { params });
   return response.data;
 }
 

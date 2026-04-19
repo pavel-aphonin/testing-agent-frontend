@@ -4,17 +4,34 @@ import { useAuthStore } from "@/store/auth";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  /** Require a specific permission code, e.g. "runs.create". */
   requirePermission?: string;
-  /** Legacy: require a minimum role. Mapped to permissions for compat. */
   requireRole?: string;
 }
 
-/** Maps old role slugs to the permission checked on the route guard. */
+/** Old role hierarchy for fallback when permissions haven't loaded yet. */
+const ROLE_RANK: Record<string, number> = {
+  viewer: 0,
+  tester: 1,
+  moderator: 2,
+  admin: 3,
+};
+
 const LEGACY_ROLE_TO_PERM: Record<string, string> = {
   viewer: "runs.view",
   tester: "runs.create",
-  admin: "users.manage",
+  // users.view is admin-only (moderator/tester don't have it)
+  admin: "users.view",
+};
+
+const PERM_TO_MIN_ROLE: Record<string, string> = {
+  "runs.view": "viewer",
+  "runs.create": "tester",
+  "users.view": "admin",
+  "users.create": "admin",
+  "users.edit": "admin",
+  "users.delete": "admin",
+  "dictionaries.view": "admin",
+  "dictionaries.create": "admin",
 };
 
 export function ProtectedRoute({
@@ -30,18 +47,39 @@ export function ProtectedRoute({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const perms = new Set(user.permissions ?? []);
+  const perms = user.permissions;
+  const hasPerms = Array.isArray(perms) && perms.length > 0;
+  const permsSet = new Set(perms ?? []);
 
-  // Permission-based check (new style)
-  if (requirePermission && !perms.has(requirePermission)) {
-    return <Navigate to="/runs" replace />;
+  // If permissions are loaded, use them. Otherwise fall back to role hierarchy.
+  if (requirePermission) {
+    if (hasPerms) {
+      if (!permsSet.has(requirePermission)) {
+        return <Navigate to="/runs" replace />;
+      }
+    } else {
+      // Fallback: map permission to minimum role
+      const minRole = PERM_TO_MIN_ROLE[requirePermission] ?? "admin";
+      const userRank = ROLE_RANK[user.role] ?? 0;
+      const requiredRank = ROLE_RANK[minRole] ?? 3;
+      if (userRank < requiredRank) {
+        return <Navigate to="/runs" replace />;
+      }
+    }
   }
 
-  // Legacy role-based check — translate to permission
   if (requireRole) {
-    const perm = LEGACY_ROLE_TO_PERM[requireRole];
-    if (perm && !perms.has(perm)) {
-      return <Navigate to="/runs" replace />;
+    if (hasPerms) {
+      const perm = LEGACY_ROLE_TO_PERM[requireRole];
+      if (perm && !permsSet.has(perm)) {
+        return <Navigate to="/runs" replace />;
+      }
+    } else {
+      const userRank = ROLE_RANK[user.role] ?? 0;
+      const requiredRank = ROLE_RANK[requireRole] ?? 3;
+      if (userRank < requiredRank) {
+        return <Navigate to="/runs" replace />;
+      }
     }
   }
 
