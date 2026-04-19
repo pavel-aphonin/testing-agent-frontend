@@ -31,6 +31,7 @@ import {
   listTestData,
   updateTestData,
 } from "@/api/testData";
+import { useWorkspaceStore } from "@/store/workspace";
 import type { TestDataCreate, TestDataRead, TestDataUpdate } from "@/types";
 
 const CATEGORIES = ["auth", "payment", "personal", "general"] as const;
@@ -68,13 +69,15 @@ export function TestData() {
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
 
+  const workspace = useWorkspaceStore((s) => s.current);
   const dataQuery = useQuery({
-    queryKey: ["test-data"],
-    queryFn: listTestData,
+    queryKey: ["test-data", workspace?.id ?? "none"],
+    queryFn: () => listTestData(workspace?.id),
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: TestDataCreate) => createTestData(payload),
+    mutationFn: (payload: TestDataCreate) =>
+      createTestData({ ...payload, workspace_id: workspace?.id }),
     onSuccess: () => {
       notify.success(t("testData.created"));
       queryClient.invalidateQueries({ queryKey: ["test-data"] });

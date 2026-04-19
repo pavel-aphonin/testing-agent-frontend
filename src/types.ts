@@ -331,6 +331,7 @@ export interface ScenarioCreate {
   title: string;
   description?: string;
   steps_json: Record<string, unknown>;
+  workspace_id?: string | null;
 }
 
 export interface ScenarioUpdate {
@@ -498,6 +499,7 @@ export interface TestDataCreate {
   value: string;
   category?: string;
   description?: string;
+  workspace_id?: string | null;
 }
 
 export interface TestDataUpdate {

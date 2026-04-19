@@ -1,12 +1,15 @@
 import {
   DeleteOutlined,
   InboxOutlined,
+  PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
   UndoOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Avatar,
   Button,
   Drawer,
   Form,
@@ -17,6 +20,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
@@ -28,6 +32,8 @@ import {
   deleteWorkspace,
   restoreWorkspace,
   updateWorkspace,
+  uploadWorkspaceLogo,
+  workspaceLogoUrl,
 } from "@/api/workspaces";
 import { useAuthStore } from "@/store/auth";
 import type { WorkspaceRead } from "@/types";
@@ -87,6 +93,16 @@ export function DictWorkspacesTab() {
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
 
+  const logoM = useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => uploadWorkspaceLogo(id, file),
+    onSuccess: () => {
+      notify.success("Логотип загружен");
+      qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
+      qc.invalidateQueries({ queryKey: ["my-workspaces"] });
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
+
   const deleteM = useMutation({
     mutationFn: deleteWorkspace,
     onSuccess: () => {
@@ -133,6 +149,19 @@ export function DictWorkspacesTab() {
 
   const columns: ColumnsType<WorkspaceRead> = [
     {
+      title: "Лого",
+      key: "logo",
+      width: 80,
+      render: (_: unknown, rec: WorkspaceRead) => {
+        const url = workspaceLogoUrl(rec.id, rec.logo_path);
+        return url ? (
+          <Avatar shape="square" size={32} src={url} />
+        ) : (
+          <Avatar shape="square" size={32} icon={<PictureOutlined />} />
+        );
+      },
+    },
+    {
       title: "Название",
       dataIndex: "name",
       key: "name",
@@ -159,9 +188,23 @@ export function DictWorkspacesTab() {
     {
       title: "Действия",
       key: "actions",
-      width: 180,
+      width: 240,
       render: (_: unknown, rec: WorkspaceRead) => (
         <Space size="small">
+          {myPerms.has("dictionaries.edit") && !rec.is_archived && (
+            <Upload
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                logoM.mutate({ id: rec.id, file });
+                return false;
+              }}
+            >
+              <Tooltip title="Загрузить логотип">
+                <Button size="small" icon={<UploadOutlined />} />
+              </Tooltip>
+            </Upload>
+          )}
           {myPerms.has("dictionaries.edit") && !rec.is_archived && (
             <Tooltip title="Редактировать">
               <Button size="small" onClick={() => openEdit(rec)}>

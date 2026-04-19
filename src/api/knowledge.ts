@@ -7,11 +7,13 @@ import type {
   KnowledgeQueryResponse,
 } from "@/types";
 
-export async function listKnowledgeDocuments(): Promise<
+export async function listKnowledgeDocuments(workspaceId?: string | null): Promise<
   KnowledgeDocumentSummary[]
 > {
+  const params = workspaceId ? { workspace_id: workspaceId } : {};
   const response = await apiClient.get<KnowledgeDocumentSummary[]>(
     "/api/admin/knowledge/documents",
+    { params },
   );
   return response.data;
 }

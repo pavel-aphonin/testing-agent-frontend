@@ -33,6 +33,7 @@ import {
   queryKnowledgeBase,
   reembedKnowledgeDocument,
 } from "@/api/knowledge";
+import { useWorkspaceStore } from "@/store/workspace";
 import { notify } from "@/utils/notify";
 import type {
   KnowledgeDocumentCreate,
@@ -99,9 +100,10 @@ export function AdminKnowledge() {
   const [uploadForm] = Form.useForm<KnowledgeDocumentCreate>();
   const [searchForm] = Form.useForm<{ query: string; top_k: number }>();
 
+  const workspace = useWorkspaceStore((s) => s.current);
   const documentsQuery = useQuery({
-    queryKey: ["knowledge-documents"],
-    queryFn: listKnowledgeDocuments,
+    queryKey: ["knowledge-documents", workspace?.id ?? "none"],
+    queryFn: () => listKnowledgeDocuments(workspace?.id),
   });
 
   const createMutation = useMutation({

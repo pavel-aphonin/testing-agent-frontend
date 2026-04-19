@@ -1,8 +1,9 @@
 import { apiClient } from "@/api/client";
 import type { TestDataCreate, TestDataRead, TestDataUpdate } from "@/types";
 
-export async function listTestData(): Promise<TestDataRead[]> {
-  const response = await apiClient.get<TestDataRead[]>("/api/test-data");
+export async function listTestData(workspaceId?: string | null): Promise<TestDataRead[]> {
+  const params = workspaceId ? { workspace_id: workspaceId } : {};
+  const response = await apiClient.get<TestDataRead[]>("/api/test-data", { params });
   return response.data;
 }
 

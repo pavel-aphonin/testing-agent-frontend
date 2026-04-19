@@ -1,9 +1,11 @@
 import { apiClient } from "@/api/client";
 import type { ScenarioCreate, ScenarioRead, ScenarioUpdate } from "@/types";
 
-export async function listScenarios(): Promise<ScenarioRead[]> {
+export async function listScenarios(workspaceId?: string | null): Promise<ScenarioRead[]> {
+  const params = workspaceId ? { workspace_id: workspaceId } : {};
   const response = await apiClient.get<ScenarioRead[]>(
     "/api/scenarios",
+    { params },
   );
   return response.data;
 }

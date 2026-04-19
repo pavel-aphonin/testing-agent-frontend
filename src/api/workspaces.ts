@@ -65,3 +65,21 @@ export async function restoreWorkspace(id: string): Promise<WorkspaceRead> {
 export async function deleteWorkspace(id: string): Promise<void> {
   await apiClient.delete(`/api/admin/workspaces/${id}`);
 }
+
+export async function uploadWorkspaceLogo(
+  wsId: string,
+  file: File,
+): Promise<WorkspaceRead> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await apiClient.post(`/api/workspaces/${wsId}/logo`, fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+}
+
+export function workspaceLogoUrl(wsId: string, hasLogo: boolean | string | null): string | null {
+  if (!hasLogo) return null;
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  return `${base}/api/workspaces/${wsId}/logo`;
+}

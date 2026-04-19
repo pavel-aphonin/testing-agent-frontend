@@ -54,8 +54,8 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   });
 
   const scenariosQuery = useQuery({
-    queryKey: ["scenarios"],
-    queryFn: listScenarios,
+    queryKey: ["scenarios", workspace?.id ?? "none"],
+    queryFn: () => listScenarios(workspace?.id),
     enabled: open && useScenarios,
   });
 

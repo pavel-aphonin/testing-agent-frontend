@@ -44,6 +44,7 @@ import {
   listScenarios,
   updateScenario,
 } from "@/api/scenarios";
+import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
 
 // ────────────────────────────── Types ──────────────────────────────
@@ -388,15 +389,17 @@ export function AdminScenarios() {
   const [steps, setSteps] = useState<ScenarioStep[]>([]);
   const [editorMode, setEditorMode] = useState<string>("constructor");
 
+  const workspace = useWorkspaceStore((s) => s.current);
   const scenariosQuery = useQuery({
-    queryKey: ["scenarios"],
-    queryFn: listScenarios,
+    queryKey: ["scenarios", workspace?.id ?? "none"],
+    queryFn: () => listScenarios(workspace?.id),
   });
 
   const selected = scenariosQuery.data?.find((s) => s.id === selectedId) ?? null;
 
   const createMutation = useMutation({
-    mutationFn: (payload: ScenarioCreate) => createScenario(payload),
+    mutationFn: (payload: ScenarioCreate) =>
+      createScenario({ ...payload, workspace_id: workspace?.id }),
     onSuccess: (created) => {
       notify.success(t("scenarios.created"));
       queryClient.invalidateQueries({ queryKey: ["scenarios"] });

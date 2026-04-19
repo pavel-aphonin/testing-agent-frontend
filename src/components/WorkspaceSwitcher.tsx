@@ -1,10 +1,10 @@
 import { AppstoreOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Dropdown, Space, Tag, Typography } from "antd";
+import { Avatar, Button, Dropdown, Space, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useEffect } from "react";
 
-import { myWorkspaces } from "@/api/workspaces";
+import { myWorkspaces, workspaceLogoUrl } from "@/api/workspaces";
 import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -42,17 +42,24 @@ export function WorkspaceSwitcher() {
   }, [current, workspaces, setCurrent]);
 
   const items: MenuProps["items"] = [
-    ...(workspaces ?? []).map((ws) => ({
-      key: ws.id,
-      label: (
-        <Space>
-          <AppstoreOutlined />
-          <span>{ws.name}</span>
-          {ws.id === current?.id && <Tag color="green">текущее</Tag>}
-        </Space>
-      ),
-      onClick: () => setCurrent(ws),
-    })),
+    ...(workspaces ?? []).map((ws) => {
+      const logoUrl = workspaceLogoUrl(ws.id, ws.logo_path);
+      return {
+        key: ws.id,
+        label: (
+          <Space>
+            {logoUrl ? (
+              <Avatar size={20} src={logoUrl} shape="square" />
+            ) : (
+              <AppstoreOutlined />
+            )}
+            <span>{ws.name}</span>
+            {ws.id === current?.id && <Tag color="green">текущее</Tag>}
+          </Space>
+        ),
+        onClick: () => setCurrent(ws),
+      };
+    }),
   ];
 
   if (!workspaces || workspaces.length === 0) {
@@ -75,10 +82,18 @@ export function WorkspaceSwitcher() {
           fontWeight: 600,
           fontSize: 13,
           color: "#333",
-          maxWidth: 220,
+          maxWidth: 240,
         }}
       >
-        <AppstoreOutlined style={{ color: "#EE3424" }} />
+        {current && workspaceLogoUrl(current.id, current.logo_path) ? (
+          <Avatar
+            size={20}
+            src={workspaceLogoUrl(current.id, current.logo_path)!}
+            shape="square"
+          />
+        ) : (
+          <AppstoreOutlined style={{ color: "#EE3424" }} />
+        )}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {current?.name ?? "Выберите пространство"}
         </span>
