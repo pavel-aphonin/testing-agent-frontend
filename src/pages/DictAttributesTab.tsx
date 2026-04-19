@@ -27,7 +27,9 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 
+import { listCustomDictionaries } from "@/api/customDictionaries";
 import { listAdminUsers } from "@/api/users";
+import { useWorkspaceStore } from "@/store/workspace";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 
@@ -158,6 +160,7 @@ export function DictAttributesTab() {
           ? dayjs(attr.default_value)
           : attr.default_value,
       is_required: attr.is_required,
+      source_dictionary_id: attr.source_dictionary_id,
       parent_id: attr.parent_id,
     });
     setDrawerOpen(true);
@@ -185,14 +188,19 @@ export function DictAttributesTab() {
       defaultVal = (defaultVal as dayjs.Dayjs).toISOString();
     }
 
+    // If source_dictionary_id is set, ignore static enum_values
+    const sourceDictId = dt === "enum" ? (values.source_dictionary_id ?? null) : null;
+    const finalEnumValues = sourceDictId ? null : enumValues;
+
     if (editing) {
       updateM.mutate({
         id: editing.id,
         name: values.name,
         description: values.description || null,
-        enum_values: enumValues,
+        enum_values: finalEnumValues,
         default_value: defaultVal,
         is_required: !!values.is_required,
+        source_dictionary_id: sourceDictId,
         parent_id: values.parent_id ?? null,
       });
     } else {
@@ -201,11 +209,12 @@ export function DictAttributesTab() {
         name: values.name,
         description: values.description || undefined,
         data_type: dt,
-        enum_values: enumValues,
+        enum_values: finalEnumValues,
         default_value: defaultVal,
         scope: values.scope,
         applies_to: values.applies_to,
         is_required: !!values.is_required,
+        source_dictionary_id: sourceDictId,
         parent_id: values.parent_id ?? parentForNew ?? null,
         is_group: creatingGroup,
       };
@@ -291,12 +300,21 @@ export function DictAttributesTab() {
   ];
 
   const dataTypeWatch = Form.useWatch("data_type", form);
+  const sourceDictWatch = Form.useWatch("source_dictionary_id", form);
+  const ws = useWorkspaceStore((s) => s.current);
 
   // Member-type attributes need a list of users to choose from.
   const usersQ = useQuery({
     queryKey: ["admin-users-for-member-attr"],
     queryFn: listAdminUsers,
     enabled: drawerOpen && dataTypeWatch === "member",
+  });
+
+  // For enum: optionally pull values from a custom workspace dictionary.
+  const wsDictsQ = useQuery({
+    queryKey: ["custom-dicts-for-attr", ws?.id ?? "none"],
+    queryFn: () => (ws ? listCustomDictionaries(ws.id) : Promise.resolve([])),
+    enabled: drawerOpen && dataTypeWatch === "enum" && Boolean(ws),
   });
 
   return (
@@ -410,14 +428,35 @@ export function DictAttributesTab() {
               </Form.Item>
 
               {dataTypeWatch === "enum" && (
-                <Form.Item
-                  name="enum_values"
-                  label="Допустимые значения"
-                  extra="Через запятую: Светлая, Тёмная"
-                  rules={[{ required: true, message: "Обязательно" }]}
-                >
-                  <Input placeholder="Светлая, Тёмная" />
-                </Form.Item>
+                <>
+                  <Form.Item
+                    name="source_dictionary_id"
+                    label="Источник значений"
+                    extra="Если выбрать справочник — значения берутся из него, поле «Допустимые значения» игнорируется"
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Не использовать справочник (статика ниже)"
+                      loading={wsDictsQ.isLoading}
+                      options={(wsDictsQ.data ?? [])
+                        .filter((d) => !d.is_group)
+                        .map((d) => ({
+                          value: d.id,
+                          label: `${d.name} (${d.kind === "linear" ? "линейный" : "иерархический"})`,
+                        }))}
+                    />
+                  </Form.Item>
+                  {!sourceDictWatch && (
+                    <Form.Item
+                      name="enum_values"
+                      label="Допустимые значения"
+                      extra="Через запятую: Светлая, Тёмная"
+                      rules={[{ required: !sourceDictWatch, message: "Обязательно" }]}
+                    >
+                      <Input placeholder="Светлая, Тёмная" />
+                    </Form.Item>
+                  )}
+                </>
               )}
 
               <Form.Item

@@ -92,6 +92,83 @@ export interface WorkspaceRead extends WorkspaceBrief {
   updated_at: string | null;
 }
 
+// ---- Custom Dictionaries (per-workspace) ----
+
+export type CustomDictionaryKind = "linear" | "hierarchical";
+
+export interface CustomDictionaryRead {
+  id: string;
+  workspace_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  kind: CustomDictionaryKind;
+  is_restricted: boolean;
+  parent_id: string | null;
+  is_group: boolean;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface CustomDictionaryCreate {
+  workspace_id: string;
+  code: string;
+  name: string;
+  description?: string;
+  kind?: CustomDictionaryKind;
+  is_restricted?: boolean;
+  parent_id?: string | null;
+  is_group?: boolean;
+}
+
+export interface CustomDictionaryUpdate {
+  name?: string;
+  description?: string;
+  is_restricted?: boolean;
+  parent_id?: string | null;
+}
+
+export interface CustomDictionaryItemRead {
+  id: string;
+  dictionary_id: string;
+  code: string | null;
+  name: string;
+  description: string | null;
+  parent_id: string | null;
+  is_group: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface CustomDictionaryItemCreate {
+  code?: string;
+  name: string;
+  description?: string;
+  parent_id?: string | null;
+  is_group?: boolean;
+  sort_order?: number;
+}
+
+export interface CustomDictionaryItemUpdate {
+  code?: string;
+  name?: string;
+  description?: string;
+  parent_id?: string | null;
+  sort_order?: number;
+}
+
+export interface CustomDictionaryPermissionRead {
+  id: string;
+  dictionary_id: string;
+  user_id: string;
+  user_email: string;
+  can_view: boolean;
+  can_edit: boolean;
+  created_at: string;
+}
+
 // ---- Attributes ----
 
 export type AttributeDataType =
@@ -116,6 +193,7 @@ export interface AttributeRead {
   applies_to: string;
   is_system: boolean;
   is_required: boolean;
+  source_dictionary_id: string | null;
   parent_id: string | null;
   is_group: boolean;
   created_at: string;
@@ -132,6 +210,7 @@ export interface AttributeCreate {
   scope?: AttributeScope;
   applies_to?: string;
   is_required?: boolean;
+  source_dictionary_id?: string | null;
   parent_id?: string | null;
   is_group?: boolean;
 }
@@ -142,6 +221,7 @@ export interface AttributeUpdate {
   enum_values?: string[] | null;
   default_value?: unknown;
   is_required?: boolean;
+  source_dictionary_id?: string | null;
   parent_id?: string | null;
 }
 

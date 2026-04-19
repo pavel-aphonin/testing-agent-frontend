@@ -16,6 +16,7 @@ import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
+import { WorkspaceDictionaries } from "@/pages/WorkspaceDictionaries";
 import { WorkspaceMembers } from "@/pages/WorkspaceMembers";
 import { HelpPage } from "@/pages/Help";
 import { Login } from "@/pages/Login";
@@ -160,6 +161,10 @@ export default function App() {
           <Route
             path="/workspace/members"
             element={<WorkspaceMembers />}
+          />
+          <Route
+            path="/workspace/dictionaries"
+            element={<WorkspaceDictionaries />}
           />
         </Route>
 

@@ -16,6 +16,7 @@ import dayjs from "dayjs";
 import { useMemo } from "react";
 
 import { listAttributes, listAttributeValues, setAttributeValue } from "@/api/attributes";
+import { listDictionaryItems } from "@/api/customDictionaries";
 import { listAdminUsers } from "@/api/users";
 import type { AttributeRead, AttributeValueRead } from "@/types";
 import { buildTree } from "@/utils/tree";
@@ -210,6 +211,15 @@ function ValueInput({
       );
 
     case "enum":
+      if (attr.source_dictionary_id) {
+        return (
+          <DictItemSelect
+            dictId={attr.source_dictionary_id}
+            value={(value as string) ?? null}
+            onChange={onChange}
+          />
+        );
+      }
       return (
         <Select
           allowClear
@@ -269,5 +279,68 @@ function ValueInput({
         />
       );
   }
+}
+
+/**
+ * Dropdown sourced from a per-workspace custom dictionary.
+ *
+ * For "linear" dictionaries — flat option list.
+ * For "hierarchical" — uses TreeSelect-style indentation (rendered via
+ * Select with indented labels, since values stored are item ids).
+ */
+function DictItemSelect({
+  dictId,
+  value,
+  onChange,
+}: {
+  dictId: string;
+  value: string | null;
+  onChange: (v: unknown) => void;
+}) {
+  const itemsQ = useQuery({
+    queryKey: ["custom-dict-items", dictId],
+    queryFn: () => listDictionaryItems(dictId),
+  });
+
+  const options = useMemo(() => {
+    if (!itemsQ.data) return [];
+    // Detect kind: if any item has parent_id, it's hierarchical
+    const hierarchical = itemsQ.data.some((it) => it.parent_id);
+    if (!hierarchical) {
+      return itemsQ.data
+        .filter((it) => !it.is_group)
+        .map((it) => ({ value: it.id, label: it.name }));
+    }
+    // Hierarchical: build indented flat list
+    const tree = buildTree(itemsQ.data);
+    const opts: { value: string; label: string; disabled?: boolean }[] = [];
+    function walk(nodes: any[], depth: number) {
+      for (const n of nodes) {
+        opts.push({
+          value: n.item.id,
+          label: "—".repeat(depth) + " " + n.item.name,
+          disabled: n.item.is_group,
+        });
+        if (n.children) walk(n.children, depth + 1);
+      }
+    }
+    walk(tree, 0);
+    return opts;
+  }, [itemsQ.data]);
+
+  return (
+    <Select
+      showSearch
+      allowClear
+      value={value}
+      onChange={(v) => onChange(v ?? null)}
+      loading={itemsQ.isLoading}
+      options={options}
+      filterOption={(input, option) =>
+        (option?.label as string ?? "").toLowerCase().includes(input.toLowerCase())
+      }
+      style={{ width: "100%" }}
+    />
+  );
 }
 
