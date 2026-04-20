@@ -57,11 +57,14 @@ export function AppLayout() {
       : DEFAULT_WIDTH;
   });
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    // Default: Workspace group open, System group collapsed.
+    // Users see their runs/scenarios/etc. right away; admin-y stuff is
+    // one click away.
     try {
       const raw = localStorage.getItem("ta-sider-groups");
-      return raw ? JSON.parse(raw) : ["sys", "ws"];
+      return raw ? JSON.parse(raw) : ["ws"];
     } catch {
-      return ["sys", "ws"];
+      return ["ws"];
     }
   });
 
@@ -184,19 +187,14 @@ export function AppLayout() {
     });
   }
 
-  // Always-visible footer items
-  const footerItems: Item[] = [
-    {
-      key: "/profile",
-      icon: <UserOutlined />,
-      label: <Link to="/profile">{t("nav.profile")}</Link>,
-    },
-    {
-      key: "/help",
-      icon: <QuestionCircleOutlined />,
-      label: <Link to="/help">Справка</Link>,
-    },
-  ];
+  // "Справка" lives in the System group (everyone has access but
+  // conceptually it belongs with system-level items). "Профиль" is not
+  // a menu item — the email/role block at the bottom links to /profile.
+  sysItems.push({
+    key: "/help",
+    icon: <QuestionCircleOutlined />,
+    label: <Link to="/help">Справка</Link>,
+  });
 
   // ── Build menu structure ────────────────────────────────────────────────
   // When collapsed → flat list (labels hidden anyway, groups would just
@@ -218,20 +216,14 @@ export function AppLayout() {
       children: sysItems,
     });
   }
-  menuItems.push({ type: "divider" });
-  for (const it of footerItems) {
-    menuItems.push(it);
-  }
 
   const collapsedItems: MenuProps["items"] = [
     ...wsItems,
     { type: "divider" as const },
     ...sysItems,
-    { type: "divider" as const },
-    ...footerItems,
   ];
 
-  const allKeys = [...wsItems, ...sysItems, ...footerItems].map((i) => i.key);
+  const allKeys = [...wsItems, ...sysItems, { key: "/profile" }].map((i) => i.key);
   const selectedKey =
     allKeys
       .filter((k) => location.pathname.startsWith(k))
@@ -433,23 +425,42 @@ export function AppLayout() {
           >
             {collapsed ? (
               <Tooltip title={`${user.email}\n${user.role_name || user.role}`} placement="right">
-                <div style={{ display: "flex", justifyContent: "center" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "center", cursor: "pointer" }}
+                  onClick={() => navigate("/profile")}
+                >
                   <Avatar size="small" icon={<UserOutlined />} style={{ background: "#EE3424" }} />
                 </div>
               </Tooltip>
             ) : (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                  <Avatar size="small" icon={<UserOutlined />} style={{ background: "#EE3424", flexShrink: 0 }} />
-                  <div style={{ overflow: "hidden", lineHeight: 1.3 }}>
-                    <Typography.Text style={{ color: "#fff", fontSize: 12, display: "block" }} ellipsis>
-                      {user.email}
-                    </Typography.Text>
-                    <Typography.Text style={{ color: "#888", fontSize: 11 }}>
-                      {user.role_name || t(`roles.${user.role}`)}
-                    </Typography.Text>
+                <Tooltip title="Открыть профиль" placement="right">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 6,
+                      padding: 4,
+                      margin: -4,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => navigate("/profile")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "#1a1a1a")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <Avatar size="small" icon={<UserOutlined />} style={{ background: "#EE3424", flexShrink: 0 }} />
+                    <div style={{ overflow: "hidden", lineHeight: 1.3 }}>
+                      <Typography.Text style={{ color: "#fff", fontSize: 12, display: "block" }} ellipsis>
+                        {user.email}
+                      </Typography.Text>
+                      <Typography.Text style={{ color: "#888", fontSize: 11 }}>
+                        {user.role_name || t(`roles.${user.role}`)}
+                      </Typography.Text>
+                    </div>
                   </div>
-                </div>
+                </Tooltip>
                 <div style={{ color: "#555", fontSize: 10, marginTop: 12, paddingTop: 8, borderTop: "1px solid #1a1a1a" }}>
                   v{APP_VERSION} · {APP_BUILD}
                 </div>
