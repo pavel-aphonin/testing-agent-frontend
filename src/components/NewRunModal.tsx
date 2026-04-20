@@ -9,11 +9,14 @@ import { notify } from "@/utils/notify";
 import { LabelWithHint } from "@/components/LabelWithHint";
 
 import { createRunV2, uploadApp } from "@/api/runs";
+import { listAttributes } from "@/api/attributes";
 import { useWorkspaceStore } from "@/store/workspace";
 import { listActiveDevices } from "@/api/devices";
 import { listScenarios } from "@/api/scenarios";
 import { getMySettings } from "@/api/settings";
-import type { AppUploadResponse, RunCreateV2, RunMode, DeviceConfigRead } from "@/types";
+import { DatePicker, Divider } from "antd";
+import dayjs from "dayjs";
+import type { AppUploadResponse, AttributeRead, RunCreateV2, RunMode, DeviceConfigRead } from "@/types";
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
@@ -50,6 +53,14 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   const devicesQuery = useQuery({
     queryKey: ["active-devices"],
     queryFn: listActiveDevices,
+    enabled: open,
+  });
+
+  // Run-scoped attributes — rendered as extra form fields so users can
+  // set custom metadata (ticket number, tester name, etc.) at create time.
+  const runAttrsQ = useQuery({
+    queryKey: ["run-attributes"],
+    queryFn: () => listAttributes("run"),
     enabled: open,
   });
 
@@ -127,8 +138,19 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
       <Form
         form={form}
         layout="vertical"
-        onFinish={(values) => {
+        onFinish={(values: any) => {
           if (!uploadResult) return;
+          // Extract run-attribute values from the form (prefixed with "attr_")
+          const attrValues: Record<string, unknown> = {};
+          for (const attr of runAttrsQ.data ?? []) {
+            if (attr.is_group) continue;
+            const raw = values[`attr_${attr.id}`];
+            // Normalize dayjs → ISO for date attributes
+            attrValues[attr.id] =
+              attr.data_type === "date" && raw && typeof raw === "object" && "toISOString" in raw
+                ? (raw as dayjs.Dayjs).toISOString()
+                : raw ?? null;
+          }
           submitMutation.mutate({
             title: values.title || undefined,
             app_file_id: uploadResult.upload_id,
@@ -140,6 +162,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             scenario_ids: useScenarios ? (values.scenario_ids ?? []) : [],
             pbt_enabled: pbtEnabled,
             workspace_id: workspace?.id,
+            attribute_values: Object.keys(attrValues).length > 0 ? attrValues : undefined,
           });
         }}
         initialValues={{
@@ -322,7 +345,65 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             },
           ]}
         />
+
+        {/* Run-scoped attributes (if any configured) */}
+        {(runAttrsQ.data ?? []).filter((a) => !a.is_group).length > 0 && (
+          <>
+            <Divider orientation="left">Атрибуты запуска</Divider>
+            {(runAttrsQ.data ?? [])
+              .filter((a) => !a.is_group)
+              .map((attr) => (
+                <RunAttrField key={attr.id} attr={attr} />
+              ))}
+          </>
+        )}
       </Form>
     </Modal>
+  );
+}
+
+function RunAttrField({ attr }: { attr: AttributeRead }) {
+  const label = (
+    <span>
+      {attr.name}
+      {attr.is_required && <span style={{ color: "#cf1322" }}> *</span>}
+    </span>
+  );
+  const rules = attr.is_required ? [{ required: true, message: "Обязательно" }] : [];
+  const name = `attr_${attr.id}`;
+
+  if (attr.data_type === "boolean") {
+    return (
+      <Form.Item name={name} label={label} valuePropName="checked" rules={rules}>
+        <Switch />
+      </Form.Item>
+    );
+  }
+  if (attr.data_type === "number") {
+    return (
+      <Form.Item name={name} label={label} rules={rules}>
+        <Input type="number" />
+      </Form.Item>
+    );
+  }
+  if (attr.data_type === "date") {
+    return (
+      <Form.Item name={name} label={label} rules={rules}>
+        <DatePicker style={{ width: "100%" }} showTime />
+      </Form.Item>
+    );
+  }
+  if (attr.data_type === "enum") {
+    const opts = (attr.enum_values ?? []).map((v) => ({ value: v, label: v }));
+    return (
+      <Form.Item name={name} label={label} rules={rules}>
+        <Select options={opts} allowClear />
+      </Form.Item>
+    );
+  }
+  return (
+    <Form.Item name={name} label={label} rules={rules}>
+      <Input placeholder={attr.description ?? ""} />
+    </Form.Item>
   );
 }

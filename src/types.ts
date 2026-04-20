@@ -629,6 +629,8 @@ export interface RunCreateV2 {
   scenario_ids?: string[];
   pbt_enabled?: boolean;
   workspace_id?: string | null;
+  /** attribute_id → value. Backend writes to AttributeValue rows. */
+  attribute_values?: Record<string, unknown>;
 }
 
 // ----------------------------------------------------------------- Knowledge

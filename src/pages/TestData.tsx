@@ -14,11 +14,11 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -168,15 +168,16 @@ export function TestData() {
     ? dataQuery.data?.filter((d) => d.category === filterCategory)
     : dataQuery.data;
 
-  const columns: ColumnsType<TestDataRead> = [
+  const columns: DataTableColumn<TestDataRead>[] = [
     {
       title: t("testData.columns.key"),
       dataIndex: "key",
       key: "key",
       width: 200,
-      render: (key: string) => (
+      sorter: (a, b) => a.key.localeCompare(b.key),
+      render: (key: unknown) => (
         <Typography.Text strong code>
-          {key}
+          {key as string}
         </Typography.Text>
       ),
     },
@@ -184,7 +185,7 @@ export function TestData() {
       title: t("testData.columns.value"),
       dataIndex: "value",
       key: "value",
-      render: (value: string, record: TestDataRead) => {
+      render: (value: unknown, record: TestDataRead) => {
         const masked = isMaskedKey(record.key);
         const revealed = revealedIds.has(record.id);
 
@@ -204,7 +205,7 @@ export function TestData() {
 
         return (
           <Space>
-            <Typography.Text>{value}</Typography.Text>
+            <Typography.Text>{value as string}</Typography.Text>
             {masked && (
               <Button
                 type="text"
@@ -222,9 +223,15 @@ export function TestData() {
       dataIndex: "category",
       key: "category",
       width: 140,
-      render: (category: string) => (
-        <Tag color={CATEGORY_COLORS[category] ?? "default"}>
-          {t(`testData.categories.${category}`, { defaultValue: category })}
+      sorter: (a, b) => a.category.localeCompare(b.category),
+      filters: Object.keys(CATEGORY_COLORS).map((c) => ({
+        text: t(`testData.categories.${c}`, { defaultValue: c }),
+        value: c,
+      })),
+      onFilter: (v, r) => r.category === v,
+      render: (category: unknown) => (
+        <Tag color={CATEGORY_COLORS[category as string] ?? "default"}>
+          {t(`testData.categories.${category as string}`, { defaultValue: category as string })}
         </Tag>
       ),
     },
@@ -233,9 +240,9 @@ export function TestData() {
       dataIndex: "description",
       key: "description",
       ellipsis: true,
-      render: (desc: string | null) =>
+      render: (desc: unknown) =>
         desc ? (
-          <Typography.Text type="secondary">{desc}</Typography.Text>
+          <Typography.Text type="secondary">{desc as string}</Typography.Text>
         ) : (
           <Typography.Text type="secondary" italic>
             --
@@ -247,9 +254,11 @@ export function TestData() {
       dataIndex: "created_at",
       key: "created_at",
       width: 170,
-      render: (iso: string) => (
+      defaultVisible: false,
+      sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      render: (iso: unknown) => (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {formatDate(iso)}
+          {formatDate(iso as string)}
         </Typography.Text>
       ),
     },
@@ -257,7 +266,8 @@ export function TestData() {
       title: t("common.actions"),
       key: "actions",
       width: 100,
-      render: (_, record) => (
+      toggleable: false,
+      render: (_: unknown, record) => (
         <Space size="small">
           <Button
             type="text"
@@ -315,7 +325,8 @@ export function TestData() {
         </Button>
       </div>
 
-      <Table<TestDataRead>
+      <DataTable<TestDataRead>
+        tableKey="test-data"
         rowKey="id"
         loading={dataQuery.isLoading}
         columns={columns}

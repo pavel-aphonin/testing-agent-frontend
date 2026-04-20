@@ -522,6 +522,7 @@ export function DictAttributesTab() {
                   options={[
                     { value: "workspace", label: "Рабочее пространство" },
                     { value: "user_workspace", label: "Членство в пространстве" },
+                    { value: "run", label: "Запуск исследования" },
                   ]}
                 />
               </Form.Item>

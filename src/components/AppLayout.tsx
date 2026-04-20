@@ -199,12 +199,14 @@ export function AppLayout() {
   ];
 
   // ── Build menu structure ────────────────────────────────────────────────
+  // When collapsed → flat list (labels hidden anyway, groups would just
+  // waste space). When expanded → use SubMenu so groups can collapse.
   const menuItems: MenuProps["items"] = [];
   if (wsItems.length > 0) {
     menuItems.push({
       key: "ws",
       label: "Рабочее пространство",
-      type: "group",
+      icon: <AppstoreOutlined />,
       children: wsItems,
     });
   }
@@ -212,7 +214,7 @@ export function AppLayout() {
     menuItems.push({
       key: "sys",
       label: "Система",
-      type: "group",
+      icon: <SettingOutlined />,
       children: sysItems,
     });
   }
@@ -221,7 +223,6 @@ export function AppLayout() {
     menuItems.push(it);
   }
 
-  // For collapsed mode use plain items (no groups, since labels are hidden)
   const collapsedItems: MenuProps["items"] = [
     ...wsItems,
     { type: "divider" as const },
@@ -242,7 +243,27 @@ export function AppLayout() {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ minHeight: "100vh", position: "relative" }}>
+      {/* Resize handle — absolutely positioned on top of Sider's right
+          edge. Using a wrapper so we don't fight AntD Sider's own
+          positioning. zIndex has to beat the Menu. */}
+      {!collapsed && (
+        <div
+          onMouseDown={startResize}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: siderWidth - 2,
+            width: 4,
+            height: "100vh",
+            cursor: "col-resize",
+            zIndex: 1001,
+            background: "transparent",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "#EE342488")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}
+        />
+      )}
       <Sider
         collapsed={collapsed}
         collapsedWidth={COLLAPSED_WIDTH}
@@ -260,24 +281,32 @@ export function AppLayout() {
         trigger={null}
       >
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          {/* Logo */}
+          {/* Logo + collapse toggle.
+              When collapsed → only the logo (toggle moves below).
+              When expanded → logo + title + toggle on the right. */}
+          <style>{`
+            @keyframes flipLogo {
+              0%, 40% { transform: rotateY(0deg); }
+              50%, 90% { transform: rotateY(180deg); }
+              100% { transform: rotateY(360deg); }
+            }
+          `}</style>
           <div
             style={{
               color: "#fff",
-              padding: collapsed ? "20px 8px 16px" : "20px 16px 16px",
-              fontSize: collapsed ? 14 : 20,
+              padding: collapsed ? "16px 0 12px" : "20px 16px 16px",
+              fontSize: 20,
               fontWeight: 700,
-              letterSpacing: 0.3,
               borderBottom: "2px solid #EE3424",
               marginBottom: 4,
-              textAlign: collapsed ? "center" : "left",
               whiteSpace: "nowrap",
               overflow: "hidden",
               flexShrink: 0,
               display: "flex",
+              flexDirection: collapsed ? "column" : "row",
               alignItems: "center",
               justifyContent: collapsed ? "center" : "space-between",
-              gap: 8,
+              gap: collapsed ? 8 : 8,
             }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
@@ -288,15 +317,56 @@ export function AppLayout() {
                   background: "#EE3424",
                   borderRadius: 8,
                   flexShrink: 0,
+                  perspective: 400,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: "#fff",
+                  overflow: "hidden",
                 }}
               >
-                М
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 32,
+                    height: 32,
+                    position: "relative",
+                    transformStyle: "preserve-3d",
+                    animation: "flipLogo 5s ease-in-out infinite",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backfaceVisibility: "hidden",
+                      fontSize: 18,
+                      fontWeight: 800,
+                      color: "#fff",
+                    }}
+                  >
+                    М
+                  </span>
+                  <span
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backfaceVisibility: "hidden",
+                      transform: "rotateY(180deg)",
+                      color: "#fff",
+                      gap: 1,
+                    }}
+                  >
+                    <span style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>A</span>
+                    <span style={{ width: 14, height: 2.5, background: "#fff", borderRadius: 1 }} />
+                  </span>
+                </span>
               </span>
               {!collapsed && (
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -304,14 +374,6 @@ export function AppLayout() {
                 </span>
               )}
             </span>
-            <Tooltip title={collapsed ? "Развернуть" : "Свернуть"} placement="right">
-              <a
-                onClick={() => setCollapsed(!collapsed)}
-                style={{ color: "#888", fontSize: 14, cursor: "pointer", flexShrink: 0 }}
-              >
-                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              </a>
-            </Tooltip>
           </div>
 
           {/* Navigation */}
@@ -321,10 +383,44 @@ export function AppLayout() {
               mode="inline"
               selectedKeys={[selectedKey]}
               items={collapsed ? collapsedItems : menuItems}
-              defaultOpenKeys={openGroups}
-              onOpenChange={setOpenGroups}
+              openKeys={collapsed ? undefined : openGroups}
+              onOpenChange={(keys) => setOpenGroups(keys as string[])}
               style={{ borderRight: 0 }}
             />
+          </div>
+
+          {/* Collapse toggle — sits above user info so it doesn't fight
+              with the logo for space in collapsed mode. */}
+          <div
+            style={{
+              borderTop: "1px solid #222",
+              padding: collapsed ? "8px 0" : "8px 16px",
+              flexShrink: 0,
+              display: "flex",
+              justifyContent: collapsed ? "center" : "flex-start",
+            }}
+          >
+            <Tooltip title={collapsed ? "Развернуть меню" : ""} placement="right">
+              <a
+                onClick={() => setCollapsed(!collapsed)}
+                style={{
+                  color: "#888",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 8px",
+                  borderRadius: 4,
+                  width: collapsed ? "auto" : "100%",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#1a1a1a")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                {!collapsed && <span>Свернуть меню</span>}
+              </a>
+            </Tooltip>
           </div>
 
           {/* User info */}
@@ -363,23 +459,6 @@ export function AppLayout() {
         </div>
 
         {/* Resize handle (only when expanded) */}
-        {!collapsed && (
-          <div
-            onMouseDown={startResize}
-            style={{
-              position: "absolute",
-              top: 0,
-              right: -2,
-              width: 4,
-              height: "100%",
-              cursor: "col-resize",
-              zIndex: 100,
-              background: "transparent",
-            }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "#EE342488")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}
-          />
-        )}
       </Sider>
 
       <Layout style={{ minWidth: 0, marginLeft: 0 }}>

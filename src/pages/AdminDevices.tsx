@@ -16,11 +16,11 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -121,13 +121,18 @@ export function AdminDevices() {
     });
   };
 
-  const columns: ColumnsType<DeviceConfigRead> = [
+  const columns: DataTableColumn<DeviceConfigRead>[] = [
     {
       title: t("adminDevices.columns.platform"),
       dataIndex: "platform",
       key: "platform",
       width: 100,
-      render: (p: string) => (
+      filters: [
+        { text: "iOS", value: "ios" },
+        { text: "Android", value: "android" },
+      ],
+      onFilter: (v, r) => r.platform === v,
+      render: (p: unknown) => (
         <Tag color={p === "ios" ? "blue" : "green"}>
           {p === "ios" ? "iOS" : "Android"}
         </Tag>
@@ -137,21 +142,28 @@ export function AdminDevices() {
       title: t("adminDevices.columns.device"),
       dataIndex: "device_type",
       key: "device",
+      sorter: (a, b) => a.device_type.localeCompare(b.device_type),
     },
     {
       title: t("adminDevices.columns.osVersion"),
       dataIndex: "os_version",
       key: "os",
       width: 150,
+      sorter: (a, b) => a.os_version.localeCompare(b.os_version),
     },
     {
       title: t("adminDevices.columns.active"),
       dataIndex: "is_active",
       key: "active",
       width: 100,
-      render: (active: boolean, record) => (
+      filters: [
+        { text: "Да", value: true as any },
+        { text: "Нет", value: false as any },
+      ],
+      onFilter: (v, r) => r.is_active === v,
+      render: (active: unknown, record) => (
         <Switch
-          checked={active}
+          checked={active as boolean}
           onChange={(v) =>
             toggleMutation.mutate({ id: record.id, active: v })
           }
@@ -163,7 +175,8 @@ export function AdminDevices() {
       title: "",
       key: "actions",
       width: 60,
-      render: (_, record) => (
+      toggleable: false,
+      render: (_: unknown, record) => (
         <Popconfirm
           title={t("adminDevices.deleteConfirm")}
           onConfirm={() => deleteMutation.mutate(record.id)}
@@ -281,7 +294,8 @@ export function AdminDevices() {
             title={`${t("adminDevices.activeTitle")} (${devicesQuery.data?.length ?? 0})`}
             size="small"
           >
-            <Table<DeviceConfigRead>
+            <DataTable<DeviceConfigRead>
+              tableKey="devices"
               rowKey="id"
               columns={columns}
               dataSource={devicesQuery.data ?? []}

@@ -9,11 +9,11 @@ import {
   Popconfirm,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -95,36 +95,56 @@ export function AdminModels() {
     onError: () => notify.error(t("adminModels.deleteFailed")),
   });
 
-  const columns: ColumnsType<LLMModelAdmin> = [
-    { title: t("adminModels.columns.name"), dataIndex: "name", key: "name", ellipsis: true },
+  const columns: DataTableColumn<LLMModelAdmin>[] = [
+    {
+      title: t("adminModels.columns.name"),
+      dataIndex: "name",
+      key: "name",
+      ellipsis: true,
+      sorter: (a, b) => a.name.localeCompare(b.name),
+    },
     {
       title: t("adminModels.columns.family"),
       dataIndex: "family",
       key: "family",
       width: 120,
-      render: (f: string) => <Tag>{f}</Tag>,
+      sorter: (a, b) => a.family.localeCompare(b.family),
+      render: (f: unknown) => <Tag>{f as string}</Tag>,
     },
-    { title: t("adminModels.columns.quantization"), dataIndex: "quantization", key: "q", width: 110 },
+    {
+      title: t("adminModels.columns.quantization"),
+      dataIndex: "quantization",
+      key: "q",
+      width: 110,
+      sorter: (a, b) => a.quantization.localeCompare(b.quantization),
+    },
     {
       title: t("adminModels.columns.context"),
       dataIndex: "context_length",
       key: "ctx",
       width: 110,
-      render: (n: number) => `${n.toLocaleString()} tok`,
+      sorter: (a, b) => a.context_length - b.context_length,
+      render: (n: unknown) => `${(n as number).toLocaleString()} tok`,
     },
     {
       title: t("adminModels.columns.size"),
       dataIndex: "size_bytes",
       key: "size",
       width: 100,
-      render: formatBytes,
+      sorter: (a, b) => a.size_bytes - b.size_bytes,
+      render: (v: unknown) => formatBytes(v as number),
     },
     {
       title: t("adminModels.columns.active"),
       dataIndex: "is_active",
       key: "active",
       width: 90,
-      render: (b: boolean) =>
+      filters: [
+        { text: t("common.yes"), value: true as any },
+        { text: t("common.no"), value: false as any },
+      ],
+      onFilter: (v, r) => r.is_active === v,
+      render: (b: unknown) =>
         b ? <Tag color="green">{t("common.yes")}</Tag> : <Tag color="default">{t("common.no")}</Tag>,
     },
     {
@@ -132,13 +152,16 @@ export function AdminModels() {
       dataIndex: "benchmark_tps",
       key: "tps",
       width: 110,
-      render: (n: number | null) => (n != null ? `${n.toFixed(1)}` : "—"),
+      defaultVisible: false,
+      sorter: (a, b) => (a.benchmark_tps ?? 0) - (b.benchmark_tps ?? 0),
+      render: (n: unknown) => (n != null ? `${(n as number).toFixed(1)}` : "—"),
     },
     {
       title: t("common.actions"),
       key: "actions",
       width: 160,
-      render: (_, record) => (
+      toggleable: false,
+      render: (_: unknown, record) => (
         <Space size="small">
           <Button
             size="small"
@@ -190,7 +213,8 @@ export function AdminModels() {
         </Space>
       </Space>
 
-      <Table<LLMModelAdmin>
+      <DataTable<LLMModelAdmin>
+        tableKey="models"
         rowKey="id"
         columns={columns}
         dataSource={data}
