@@ -92,6 +92,50 @@ export interface WorkspaceRead extends WorkspaceBrief {
   updated_at: string | null;
 }
 
+// ---- Notification Types (system + workspace settings) ----
+
+export interface NotificationTypeRead {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  template: string | null;
+  is_system: boolean;
+  parent_id: string | null;
+  is_group: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface NotificationTypeCreate {
+  code: string;
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  template?: string | null;
+  parent_id?: string | null;
+  is_group?: boolean;
+}
+
+export interface NotificationTypeUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  template?: string | null;
+  parent_id?: string | null;
+}
+
+export interface WorkspaceNotificationSettingRead {
+  id: string;
+  workspace_id: string;
+  notification_type_id: string;
+  is_enabled: boolean;
+}
+
 // ---- Custom Dictionaries (per-workspace) ----
 
 export type CustomDictionaryKind = "linear" | "hierarchical";

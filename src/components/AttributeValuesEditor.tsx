@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Card,
   DatePicker,
   Empty,
@@ -83,6 +84,18 @@ export function AttributeValuesEditor({ entityType, entityId }: Props) {
     return <Empty description="Нет атрибутов для этой сущности" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
+  // Count required attributes without a value
+  const missingRequired = realAttrs.filter((a) => {
+    if (!a.is_required) return false;
+    const v = valuesByAttrId.get(a.id)?.value ?? a.default_value ?? null;
+    return (
+      v === null
+      || v === undefined
+      || v === ""
+      || (Array.isArray(v) && v.length === 0)
+    );
+  });
+
   function commit(attr: AttributeRead, value: unknown) {
     setM.mutate({
       attribute_id: attr.id,
@@ -94,6 +107,15 @@ export function AttributeValuesEditor({ entityType, entityId }: Props) {
 
   return (
     <div>
+      {missingRequired.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`Не заполнено обязательных атрибутов: ${missingRequired.length}`}
+          description={missingRequired.map((a) => a.name).join(", ")}
+        />
+      )}
       {treeData.map((node) => (
         <AttributeNode
           key={node.item.id}
@@ -154,6 +176,12 @@ function AttributeNode({
 
   const valueRow = valuesByAttrId.get(attr.id);
   const currentValue = valueRow?.value ?? attr.default_value ?? null;
+  const isEmpty =
+    currentValue === null
+    || currentValue === undefined
+    || currentValue === ""
+    || (Array.isArray(currentValue) && currentValue.length === 0);
+  const requiredMissing = attr.is_required && isEmpty;
 
   return (
     <div
@@ -162,6 +190,9 @@ function AttributeNode({
         alignItems: "center",
         gap: 12,
         padding: "6px 0",
+        background: requiredMissing ? "rgba(238, 52, 36, 0.05)" : undefined,
+        borderRadius: 4,
+        paddingLeft: requiredMissing ? 8 : 0,
         marginLeft: depth * 16,
       }}
     >

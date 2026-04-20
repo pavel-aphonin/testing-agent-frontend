@@ -84,11 +84,6 @@ export function AppLayout() {
     icon: <AppstoreOutlined />,
     label: <Link to="/workspace/members">Участники пространства</Link>,
   });
-  items.push({
-    key: "/workspace/dictionaries",
-    icon: <BookOutlined />,
-    label: <Link to="/workspace/dictionaries">Справочники пространства</Link>,
-  });
 
   // Test data
   if (hasPerm("test_data.view")) {

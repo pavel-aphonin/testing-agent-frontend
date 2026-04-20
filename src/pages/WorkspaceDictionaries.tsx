@@ -293,10 +293,6 @@ export function WorkspaceDictionaries() {
 
   return (
     <>
-      <Typography.Title level={3} style={{ marginBottom: 16 }}>
-        Справочники: {ws.name}
-      </Typography.Title>
-
       <div style={{ display: "flex", gap: 16 }}>
         {/* LEFT: dictionaries list */}
         <Card
