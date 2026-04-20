@@ -17,12 +17,12 @@ import {
   Modal,
   Popconfirm,
   Space,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -217,35 +217,53 @@ export function AdminKnowledge() {
     }
   };
 
-  const columns: ColumnsType<KnowledgeDocumentSummary> = [
+  // Derive the list of embedding model tags present in the data so
+  // users can filter docs that are stuck on the old model (e.g. after
+  // upgrading the embedding stack).
+  const embedModelFilters = Array.from(
+    new Set((documentsQuery.data ?? []).map((d) => d.embedding_model)),
+  ).map((m) => ({ text: m, value: m }));
+
+  const sourceTypeFilters = Array.from(
+    new Set((documentsQuery.data ?? []).map((d) => d.source_type)),
+  ).map((m) => ({ text: m, value: m }));
+
+  const columns: DataTableColumn<KnowledgeDocumentSummary>[] = [
     {
       title: t("knowledge.columns.title"),
       dataIndex: "title",
       key: "title",
-      render: (title: string) => <Typography.Text strong>{title}</Typography.Text>,
+      sorter: (a, b) => a.title.localeCompare(b.title),
+      render: (title: unknown) => <Typography.Text strong>{title as string}</Typography.Text>,
     },
     {
       title: t("knowledge.columns.type"),
       dataIndex: "source_type",
       key: "type",
       width: 100,
-      render: (typeName: string) => <Tag>{typeName}</Tag>,
+      filters: sourceTypeFilters,
+      onFilter: (v, r) => r.source_type === v,
+      render: (typeName: unknown) => <Tag>{typeName as string}</Tag>,
     },
     {
       title: t("knowledge.columns.chunks"),
       dataIndex: "chunk_count",
       key: "chunks",
       width: 100,
+      sorter: (a, b) => a.chunk_count - b.chunk_count,
     },
     {
       title: t("knowledge.columns.embeddingModel"),
       dataIndex: "embedding_model",
       key: "embed",
-      render: (name: string) =>
-        isFakeEmbedding(name) ? (
-          <Tag color="orange">{name}</Tag>
+      sorter: (a, b) => a.embedding_model.localeCompare(b.embedding_model),
+      filters: embedModelFilters,
+      onFilter: (v, r) => r.embedding_model === v,
+      render: (name: unknown) =>
+        isFakeEmbedding(name as string) ? (
+          <Tag color="orange">{name as string}</Tag>
         ) : (
-          <Tag color="green">{name}</Tag>
+          <Tag color="green">{name as string}</Tag>
         ),
     },
     {
@@ -253,13 +271,16 @@ export function AdminKnowledge() {
       dataIndex: "uploaded_at",
       key: "uploaded_at",
       width: 200,
-      render: formatDate,
+      defaultVisible: false,
+      sorter: (a, b) => new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime(),
+      render: (v: unknown) => formatDate(v as string),
     },
     {
       title: "",
       key: "actions",
       width: 110,
-      render: (_, doc) => (
+      toggleable: false,
+      render: (_: unknown, doc) => (
         <Space size={0}>
           {/* Re-embed: only show for documents stuck on the fake-hash
               fallback. Pulses orange to draw attention since search on
@@ -342,7 +363,8 @@ export function AdminKnowledge() {
         />
       )}
 
-      <Table<KnowledgeDocumentSummary>
+      <DataTable<KnowledgeDocumentSummary>
+        tableKey="knowledge"
         rowKey="id"
         loading={documentsQuery.isLoading}
         columns={columns}
