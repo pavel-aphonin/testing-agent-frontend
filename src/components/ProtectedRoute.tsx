@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 
+import { NoAccess } from "@/pages/NoAccess";
 import { useAuthStore } from "@/store/auth";
 
 interface ProtectedRouteProps {
@@ -55,7 +56,7 @@ export function ProtectedRoute({
   if (requirePermission) {
     if (hasPerms) {
       if (!permsSet.has(requirePermission)) {
-        return <Navigate to="/runs" replace />;
+        return <NoAccess />;
       }
     } else {
       // Fallback: map permission to minimum role
@@ -63,7 +64,7 @@ export function ProtectedRoute({
       const userRank = ROLE_RANK[user.role] ?? 0;
       const requiredRank = ROLE_RANK[minRole] ?? 3;
       if (userRank < requiredRank) {
-        return <Navigate to="/runs" replace />;
+        return <NoAccess />;
       }
     }
   }
@@ -72,13 +73,13 @@ export function ProtectedRoute({
     if (hasPerms) {
       const perm = LEGACY_ROLE_TO_PERM[requireRole];
       if (perm && !permsSet.has(perm)) {
-        return <Navigate to="/runs" replace />;
+        return <NoAccess />;
       }
     } else {
       const userRank = ROLE_RANK[user.role] ?? 0;
       const requiredRank = ROLE_RANK[requireRole] ?? 3;
       if (userRank < requiredRank) {
-        return <Navigate to="/runs" replace />;
+        return <NoAccess />;
       }
     }
   }

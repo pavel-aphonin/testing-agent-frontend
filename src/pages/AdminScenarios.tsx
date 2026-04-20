@@ -21,7 +21,7 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ReactFlow,
@@ -44,8 +44,13 @@ import {
   listScenarios,
   updateScenario,
 } from "@/api/scenarios";
+import { listTestData } from "@/api/testData";
+import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
+
+// Context for sharing test_data variables with nested editors
+const VarsCtx = createContext<{ key: string; value?: string }[]>([]);
 
 // ────────────────────────────── Types ──────────────────────────────
 
@@ -90,6 +95,7 @@ function StepEditor({
   steps: ScenarioStep[];
   onChange: (steps: ScenarioStep[]) => void;
 }) {
+  const tdataVars = useContext(VarsCtx);
   const updateStep = (index: number, field: keyof ScenarioStep, value: string) => {
     const next = [...steps];
     next[index] = { ...next[index], [field]: value };
@@ -130,10 +136,22 @@ function StepEditor({
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {(step.action === "input" || step.action === "swipe") && (
-                <Input size="small"
-                  placeholder={step.action === "input" ? "Значение или {{test_data.key}}" : "up/down/left/right"}
-                  value={step.value}
-                  onChange={(e) => updateStep(i, "value", e.target.value)} style={{ flex: 1 }} />
+                step.action === "input" ? (
+                  <div style={{ flex: 1 }}>
+                    <VarAutocompleteInput
+                      size="small"
+                      variables={tdataVars}
+                      value={step.value ?? ""}
+                      onChange={(v) => updateStep(i, "value", v)}
+                      placeholder="Значение или {test_data.key}"
+                    />
+                  </div>
+                ) : (
+                  <Input size="small"
+                    placeholder="up/down/left/right"
+                    value={step.value}
+                    onChange={(e) => updateStep(i, "value", e.target.value)} style={{ flex: 1 }} />
+                )
               )}
               <Input size="small" placeholder="Ожидаемый результат" value={step.expected_result}
                 onChange={(e) => updateStep(i, "expected_result", e.target.value)} style={{ flex: 1 }} />
@@ -220,6 +238,7 @@ function FlowchartEditor({
   steps: ScenarioStep[];
   onChange: (steps: ScenarioStep[]) => void;
 }) {
+  const tdataVars = useContext(VarsCtx);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm] = Form.useForm();
 
@@ -367,7 +386,10 @@ function FlowchartEditor({
             <Input placeholder="Кнопка, поле, переключатель..." />
           </Form.Item>
           <Form.Item name="value" label="Значение">
-            <Input placeholder="Текст или {{test_data.key}}" />
+            <VarAutocompleteInput
+              variables={tdataVars}
+              placeholder="Текст или {test_data.key}"
+            />
           </Form.Item>
           <Form.Item name="expected_result" label="Ожидаемый результат">
             <Input placeholder="Что должно произойти" />
@@ -390,6 +412,14 @@ export function AdminScenarios() {
   const [editorMode, setEditorMode] = useState<string>("constructor");
 
   const workspace = useWorkspaceStore((s) => s.current);
+  const tdataQ = useQuery({
+    queryKey: ["test-data", workspace?.id ?? "none"],
+    queryFn: () => listTestData(workspace?.id),
+  });
+  const tdataVars = (tdataQ.data ?? []).map((d) => ({
+    key: `test_data.${d.key}`,
+    value: d.value,
+  }));
   const scenariosQuery = useQuery({
     queryKey: ["scenarios", workspace?.id ?? "none"],
     queryFn: () => listScenarios(workspace?.id),
@@ -486,7 +516,7 @@ export function AdminScenarios() {
   ];
 
   return (
-    <>
+    <VarsCtx.Provider value={tdataVars}>
       <Space style={{ marginBottom: 16 }} size="middle" wrap>
         <Typography.Title level={3} style={{ margin: 0 }}>{t("scenarios.title")}</Typography.Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} loading={createMutation.isPending}>
@@ -570,6 +600,6 @@ export function AdminScenarios() {
           )}
         </Col>
       </Row>
-    </>
+    </VarsCtx.Provider>
   );
 }

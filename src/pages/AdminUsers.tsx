@@ -8,12 +8,12 @@ import {
   Button,
   Popconfirm,
   Space,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -59,16 +59,18 @@ export function AdminUsers() {
     },
   });
 
-  const columns: ColumnsType<AdminUser> = [
+  const columns: DataTableColumn<AdminUser>[] = [
     {
       title: t("adminUsers.columns.email"),
       dataIndex: "email",
       key: "email",
+      sorter: (a, b) => a.email.localeCompare(b.email),
     },
     {
       title: t("adminUsers.columns.role"),
       key: "role",
       width: 160,
+      sorter: (a, b) => (a.role_name ?? a.role).localeCompare(b.role_name ?? b.role),
       render: (_: unknown, rec: AdminUser) => (
         <Tooltip title={`${rec.permissions?.length ?? 0} разрешений`}>
           <Tag color={roleColor(rec.role_code || rec.role)}>
@@ -82,12 +84,18 @@ export function AdminUsers() {
       dataIndex: "is_active",
       key: "is_active",
       width: 90,
-      render: (v: boolean) => (v ? t("common.yes") : t("common.no")),
+      filters: [
+        { text: t("common.yes"), value: true as any },
+        { text: t("common.no"), value: false as any },
+      ],
+      onFilter: (v, r) => r.is_active === v,
+      render: (v) => (v ? t("common.yes") : t("common.no")),
     },
     {
       title: t("common.actions"),
       key: "actions",
       width: 110,
+      toggleable: false,
       render: (_: unknown, record: AdminUser) => (
         <Popconfirm
           title={t("adminUsers.deleteConfirm")}
@@ -137,7 +145,8 @@ export function AdminUsers() {
         </Space>
       </Space>
 
-      <Table<AdminUser>
+      <DataTable<AdminUser>
+        tableKey="users"
         rowKey="id"
         columns={columns}
         dataSource={data}

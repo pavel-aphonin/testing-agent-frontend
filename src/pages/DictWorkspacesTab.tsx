@@ -1,5 +1,6 @@
 import {
   DeleteOutlined,
+  EditOutlined,
   FolderAddOutlined,
   FolderOutlined,
   InboxOutlined,
@@ -266,9 +267,11 @@ export function DictWorkspacesTab() {
           )}
           {myPerms.has("dictionaries.edit") && !rec.is_archived && (
             <Tooltip title="Редактировать">
-              <Button size="small" onClick={() => openEdit(rec)}>
-                Изм.
-              </Button>
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => openEdit(rec)}
+              />
             </Tooltip>
           )}
           {myPerms.has("dictionaries.edit") && !rec.is_archived && (

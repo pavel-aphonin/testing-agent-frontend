@@ -13,11 +13,11 @@ import {
   Button,
   Popconfirm,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
+
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -73,14 +73,13 @@ export function Runs() {
   const canCreate = user?.role === "tester" || user?.role === "admin";
   const canDelete = canCreate;
 
-  const columns: ColumnsType<Run> = [
+  const columns: DataTableColumn<Run>[] = [
     {
       title: "Название",
       key: "title",
       ellipsis: true,
+      sorter: (a, b) => (a.title ?? "").localeCompare(b.title ?? ""),
       render: (_: unknown, run: Run) => {
-        // Show user title when set, else fall back to a date-derived label
-        // so the column is never empty (helps users at-a-glance scan).
         if (run.title) return <strong>{run.title}</strong>;
         const d = new Date(run.created_at);
         const day = String(d.getDate()).padStart(2, "0");
@@ -101,20 +100,37 @@ export function Runs() {
       dataIndex: "bundle_id",
       key: "bundle_id",
       ellipsis: true,
+      sorter: (a, b) => a.bundle_id.localeCompare(b.bundle_id),
     },
     {
       title: t("runs.columns.mode"),
       dataIndex: "mode",
       key: "mode",
       width: 100,
+      filters: [
+        { text: "Hybrid", value: "hybrid" },
+        { text: "MC", value: "mc" },
+        { text: "AI", value: "ai" },
+      ],
+      onFilter: (v, r) => r.mode === v,
     },
     {
       title: t("runs.columns.status"),
       dataIndex: "status",
       key: "status",
       width: 120,
-      render: (status: RunStatus) => (
-        <Tag color={STATUS_COLOR[status]}>{t(`runStatus.${status}`)}</Tag>
+      filters: [
+        { text: "Pending", value: "pending" },
+        { text: "Running", value: "running" },
+        { text: "Completed", value: "completed" },
+        { text: "Failed", value: "failed" },
+        { text: "Cancelled", value: "cancelled" },
+      ],
+      onFilter: (v, r) => r.status === v,
+      render: (status: unknown) => (
+        <Tag color={STATUS_COLOR[status as RunStatus]}>
+          {t(`runStatus.${status as RunStatus}`)}
+        </Tag>
       ),
     },
     {
@@ -122,25 +138,31 @@ export function Runs() {
       dataIndex: "max_steps",
       key: "max_steps",
       width: 90,
+      sorter: (a, b) => a.max_steps - b.max_steps,
     },
     {
       title: t("common.created"),
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
-      render: formatDate,
+      sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      render: (v) => formatDate(v as string),
     },
     {
       title: t("runs.columns.started"),
       dataIndex: "finished_at",
       key: "finished_at",
       width: 180,
-      render: formatDate,
+      defaultVisible: false,
+      sorter: (a, b) =>
+        new Date(a.finished_at ?? 0).getTime() - new Date(b.finished_at ?? 0).getTime(),
+      render: (v) => formatDate(v as string | null),
     },
     {
       title: t("common.actions"),
       key: "actions",
       width: 280,
+      toggleable: false,
       render: (_: unknown, record: Run) => (
         <Space size="small">
           <Button
@@ -210,7 +232,8 @@ export function Runs() {
         </Space>
       </Space>
 
-      <Table<Run>
+      <DataTable<Run>
+        tableKey="runs"
         rowKey="id"
         columns={columns}
         dataSource={data}
