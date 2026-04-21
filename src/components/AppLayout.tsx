@@ -24,12 +24,19 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import * as AntIcons from "@ant-design/icons";
+import { useQuery } from "@tanstack/react-query";
+
+import { listInstallations } from "@/api/apps";
+import { AppRunner } from "@/components/AppRunner";
+import { AppSlots } from "@/components/AppSlots";
 import { AssistantDrawer } from "@/components/AssistantDrawer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuthStore } from "@/store/auth";
+import { useWorkspaceStore } from "@/store/workspace";
 
 const { Header, Sider, Content } = Layout;
 
@@ -81,11 +88,23 @@ export function AppLayout() {
   }, [openGroups]);
 
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [sidebarAppOpen, setSidebarAppOpen] = useState<{
+    inst: any;
+    path: string;
+  } | null>(null);
 
   const perms = useMemo(
     () => new Set(user?.permissions ?? []),
     [user?.permissions],
   );
+
+  // Installed apps for the active workspace — used to inject sidebar slots.
+  const currentWs = useWorkspaceStore((s) => s.current);
+  const installedQ = useQuery({
+    queryKey: ["ws-apps", currentWs?.id ?? "none"],
+    queryFn: () => (currentWs ? listInstallations(currentWs.id) : Promise.resolve([])),
+    enabled: Boolean(currentWs),
+  });
   const hasPerm = (p: string) => perms.has(p);
 
   // ── Resize handle ───────────────────────────────────────────────────────
@@ -156,6 +175,23 @@ export function AppLayout() {
     icon: <AppstoreAddOutlined />,
     label: <Link to="/workspace/apps">Приложения пространства</Link>,
   });
+
+  // Sidebar slots from installed apps: appear below native workspace items.
+  // Using a key prefix "app:" so our click handler can distinguish them
+  // from regular nav items.
+  for (const inst of installedQ.data ?? []) {
+    if (!inst.is_enabled) continue;
+    const slots = inst.version?.manifest?.ui_slots ?? [];
+    for (const s of slots) {
+      if (s.slot !== "sidebar") continue;
+      const IconComp = (AntIcons as any)[s.icon ?? "AppstoreOutlined"] ?? AntIcons.AppstoreOutlined;
+      wsItems.push({
+        key: `app:${inst.id}:${s.path || "frontend/index.html"}`,
+        icon: <IconComp />,
+        label: <span>{s.label}</span>,
+      });
+    }
+  }
 
   // System group
   if (hasPerm("settings.view")) {
@@ -398,6 +434,13 @@ export function AppLayout() {
               openKeys={collapsed ? undefined : openGroups}
               onOpenChange={(keys) => setOpenGroups(keys as string[])}
               style={{ borderRight: 0 }}
+              onClick={({ key }) => {
+                if (typeof key === "string" && key.startsWith("app:")) {
+                  const [, instId, path] = key.split(":");
+                  const inst = (installedQ.data ?? []).find((i) => i.id === instId);
+                  if (inst) setSidebarAppOpen({ inst, path });
+                }
+              }}
             />
           </div>
 
@@ -507,6 +550,8 @@ export function AppLayout() {
         >
           <WorkspaceSwitcher />
           <Space size={24}>
+            {/* App-provided top-bar actions */}
+            <AppSlots slot="top_bar" />
             <WorkerStatusBadge />
             <NotificationsBell />
             <Tooltip title="Открыть ассистента" placement="bottom">
@@ -543,6 +588,16 @@ export function AppLayout() {
         </Header>
 
         <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+
+        {/* Floating corner buttons from installed apps */}
+        <AppSlots slot="corner" fixed />
+
+        {/* Sidebar app modal */}
+        <AppRunner
+          installation={sidebarAppOpen?.inst ?? null}
+          slotPath={sidebarAppOpen?.path ?? null}
+          onClose={() => setSidebarAppOpen(null)}
+        />
 
         <Content style={{ margin: 24, minWidth: 0, overflow: "auto" }}>
           <div
