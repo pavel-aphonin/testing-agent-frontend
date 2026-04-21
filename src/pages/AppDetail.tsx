@@ -26,7 +26,7 @@ import {
   Typography,
 } from "antd";
 
-import { bundleFileUrl } from "@/api/apps";
+import { bundleAssetUrl, bundleFileUrl } from "@/api/apps";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -127,7 +127,7 @@ export function AppDetail() {
               <Avatar
                 shape="square"
                 size={96}
-                src={pkg.logo_path ? `${import.meta.env.VITE_API_BASE_URL ?? ""}/${pkg.logo_path.startsWith("/") ? pkg.logo_path.slice(1) : pkg.logo_path}` : undefined}
+                src={bundleAssetUrl(pkg.logo_path) ?? undefined}
                 icon={<AppstoreAddOutlined />}
                 style={{ background: "#fafafa", color: "#999" }}
               />
@@ -186,7 +186,7 @@ export function AppDetail() {
                         width={160}
                         height={120}
                         style={{ objectFit: "cover", borderRadius: 6 }}
-                        src={bundleFileUrl(pkg.id, versionsQ.data![0].version, s.path)}
+                        src={bundleFileUrl(pkg.code, versionsQ.data![0].version, s.path)}
                         alt={s.caption ?? s.path}
                       />
                     ))}
@@ -302,7 +302,7 @@ export function AppDetail() {
                 size="small"
                 dataSource={versionsQ.data}
                 renderItem={(v) => (
-                  <List.Item>
+                  <List.Item style={{ display: "block" }}>
                     <Space>
                       <Tag color={v.is_deprecated ? "default" : "blue"}>v{v.version}</Tag>
                       <Typography.Text type="secondary" style={{ fontSize: 11 }}>
@@ -310,6 +310,22 @@ export function AppDetail() {
                       </Typography.Text>
                       {v.is_deprecated && <Tag>Устарела</Tag>}
                     </Space>
+                    {v.changelog && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: "#555",
+                          whiteSpace: "pre-wrap",
+                          background: "#fafafa",
+                          padding: "8px 10px",
+                          borderRadius: 4,
+                          borderLeft: "3px solid #EE3424",
+                        }}
+                      >
+                        {v.changelog}
+                      </div>
+                    )}
                   </List.Item>
                 )}
               />

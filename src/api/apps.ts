@@ -94,10 +94,21 @@ export async function deleteReview(id: string): Promise<void> {
   await apiClient.delete(`/api/apps/${id}/reviews`);
 }
 
-// Bundle static file URL (iframe src)
-export function bundleFileUrl(pkgId: string, version: string, path: string): string {
+// Bundle static file URL (iframe src + <img> for screenshots).
+// Served by a no-auth StaticFiles mount — the HTML/JS/CSS is public
+// code, the installation token gates the API calls the iframe makes.
+export function bundleFileUrl(pkgCode: string, version: string, path: string): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  return `${base}/api/apps/bundles/${pkgId}/${version}/${path}`;
+  const clean = path.replace(/^\/+/, "");
+  return `${base}/app-bundles/${pkgCode}/${version}/${clean}`;
+}
+
+/** Absolute URL for a relative logo_path stored on the package. */
+export function bundleAssetUrl(relPath: string | null | undefined): string | null {
+  if (!relPath) return null;
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const clean = relPath.replace(/^\/+/, "");
+  return `${base}/${clean}`;
 }
 
 // Installations (per workspace)

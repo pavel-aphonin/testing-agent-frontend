@@ -67,8 +67,9 @@ export function AppRunner({ installation, slotPath, onClose, contextData }: Prop
   if (!installation || !slotPath) return null;
 
   const version = installation.version?.version;
-  const iframeSrc = version
-    ? bundleFileUrl(installation.app_package_id, version, slotPath)
+  const code = installation.package?.code;
+  const iframeSrc = version && code
+    ? bundleFileUrl(code, version, slotPath)
     : "";
 
   return (
