@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { getRunResults } from "@/api/runs";
+import { AppSlots } from "@/components/AppSlots";
 import { DefectsPanel } from "@/components/DefectsPanel";
 import { PathFinder } from "@/components/graph/PathFinder";
 import { StateGraph } from "@/components/graph/StateGraph";
@@ -237,14 +238,25 @@ export function RunResults() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/runs")}>
-          {t("common.back")}
-        </Button>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t("runResults.title")}
-        </Typography.Title>
-        <Tag color={STATUS_COLOR[run.status as RunStatus]}>{t(`runStatus.${run.status as RunStatus}`)}</Tag>
+      <Space
+        style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}
+      >
+        <Space>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/runs")}>
+            {t("common.back")}
+          </Button>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            {t("runResults.title")}
+          </Typography.Title>
+          <Tag color={STATUS_COLOR[run.status as RunStatus]}>
+            {t(`runStatus.${run.status as RunStatus}`)}
+          </Tag>
+        </Space>
+
+        {/* App-provided run actions (e.g. "Create Jira ticket") */}
+        <Space>
+          <AppSlots slot="run_actions" contextData={{ run_id: run.id }} />
+        </Space>
       </Space>
 
       {/* Run info — human-readable, Russian labels */}

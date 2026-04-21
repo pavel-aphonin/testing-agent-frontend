@@ -11,6 +11,8 @@ interface Props {
   installation: AppInstallationRead | null;
   slotPath: string | null;
   onClose: () => void;
+  /** Extra context passed to the iframe (e.g. { run_id } on run pages). */
+  contextData?: Record<string, unknown>;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * installation token, and hands it to the iframe via postMessage once
  * the iframe signals it's ready.
  */
-export function AppRunner({ installation, slotPath, onClose }: Props) {
+export function AppRunner({ installation, slotPath, onClose, contextData }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
@@ -53,6 +55,7 @@ export function AppRunner({ installation, slotPath, onClose }: Props) {
           type: "markov.bootstrap",
           token: tokenM.data.token,
           apiBase: import.meta.env.VITE_API_BASE_URL ?? "",
+          context: contextData ?? {},
         },
         "*",
       );

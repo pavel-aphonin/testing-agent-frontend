@@ -12,6 +12,9 @@ interface Props {
   slot: "sidebar" | "top_bar" | "corner" | "run_actions" | string;
   /** Only used for the corner slot — fixed positioning. */
   fixed?: boolean;
+  /** Extra key/values passed to the iframe on bootstrap.
+   *  Example: { run_id: "..." } on the run-results page. */
+  contextData?: Record<string, unknown>;
 }
 
 /**
@@ -21,7 +24,7 @@ interface Props {
  * Keeps its own modal state so multiple slot hosts on one page don't
  * trip over each other.
  */
-export function AppSlots({ slot, fixed = false }: Props) {
+export function AppSlots({ slot, fixed = false, contextData }: Props) {
   const ws = useWorkspaceStore((s) => s.current);
   const [active, setActive] = useState<{
     inst: AppInstallationRead;
@@ -89,6 +92,7 @@ export function AppSlots({ slot, fixed = false }: Props) {
         <AppRunner
           installation={active?.inst ?? null}
           slotPath={active?.path ?? null}
+          contextData={contextData}
           onClose={() => setActive(null)}
         />
       </>

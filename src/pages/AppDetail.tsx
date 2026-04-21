@@ -16,6 +16,7 @@ import {
   Descriptions,
   Divider,
   Empty,
+  Image,
   Input,
   List,
   Rate,
@@ -24,6 +25,8 @@ import {
   Tag,
   Typography,
 } from "antd";
+
+import { bundleFileUrl } from "@/api/apps";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -170,6 +173,28 @@ export function AppDetail() {
             </Space>
 
             <Divider />
+
+            {/* Screenshots gallery — uses the latest version's manifest */}
+            {pkg.latest_version && (versionsQ.data?.[0]?.manifest?.screenshots ?? []).length > 0 && (
+              <>
+                <Typography.Title level={5}>Скриншоты</Typography.Title>
+                <Image.PreviewGroup>
+                  <Space wrap>
+                    {(versionsQ.data![0].manifest.screenshots ?? []).map((s) => (
+                      <Image
+                        key={s.path}
+                        width={160}
+                        height={120}
+                        style={{ objectFit: "cover", borderRadius: 6 }}
+                        src={bundleFileUrl(pkg.id, versionsQ.data![0].version, s.path)}
+                        alt={s.caption ?? s.path}
+                      />
+                    ))}
+                  </Space>
+                </Image.PreviewGroup>
+                <Divider />
+              </>
+            )}
 
             <Typography.Title level={5}>Описание</Typography.Title>
             <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>

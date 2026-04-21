@@ -1,14 +1,16 @@
 import {
   AppstoreOutlined,
+  CloudDownloadOutlined,
   DeleteOutlined,
   DisconnectOutlined,
   LinkOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Avatar,
+  Badge,
   Button,
   Card,
   Col,
@@ -22,15 +24,17 @@ import {
   Select,
   Space,
   Switch,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
   listInstallations,
+  listVersions,
   uninstallApp,
   updateInstallation,
 } from "@/api/apps";
@@ -86,6 +90,28 @@ export function WorkspaceApps() {
     );
   }
 
+  // Fetch the full version list for each installed app so we can
+  // compute "update available" (latest non-deprecated vs current).
+  const versionQueries = useQueries({
+    queries: (installedQ.data ?? []).map((inst) => ({
+      queryKey: ["app-versions", inst.app_package_id],
+      queryFn: () => listVersions(inst.app_package_id),
+    })),
+  });
+  const updatesAvailable = useMemo(() => {
+    const out: { inst: AppInstallationRead; latestId: string; latestVersion: string }[] = [];
+    (installedQ.data ?? []).forEach((inst, idx) => {
+      const versions = versionQueries[idx]?.data ?? [];
+      const latest = versions
+        .filter((v) => !v.is_deprecated)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      if (latest && latest.id !== inst.version_id) {
+        out.push({ inst, latestId: latest.id, latestVersion: latest.version });
+      }
+    });
+    return out;
+  }, [installedQ.data, versionQueries]);
+
   return (
     <>
       <Space
@@ -101,7 +127,12 @@ export function WorkspaceApps() {
         </Link>
       </Space>
 
-      {(installedQ.data?.length ?? 0) === 0 ? (
+      <Tabs
+        items={[
+          {
+            key: "installed",
+            label: `Установленные (${installedQ.data?.length ?? 0})`,
+            children: (installedQ.data?.length ?? 0) === 0 ? (
         <Empty
           description={
             <>
@@ -187,7 +218,63 @@ export function WorkspaceApps() {
             </Col>
           ))}
         </Row>
-      )}
+      ),
+          },
+          {
+            key: "updates",
+            label: (
+              <Badge count={updatesAvailable.length} offset={[8, -4]}>
+                <span>Обновления</span>
+              </Badge>
+            ),
+            children: updatesAvailable.length === 0 ? (
+              <Empty description="Все приложения последней версии" />
+            ) : (
+              <>
+                {updatesAvailable.map(({ inst, latestId, latestVersion }) => (
+                  <Card key={inst.id} size="small" style={{ marginBottom: 8 }}>
+                    <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                      <Space>
+                        <Avatar
+                          shape="square"
+                          size={32}
+                          src={
+                            inst.package?.logo_path
+                              ? `${import.meta.env.VITE_API_BASE_URL ?? ""}/${inst.package.logo_path.startsWith("/") ? inst.package.logo_path.slice(1) : inst.package.logo_path}`
+                              : undefined
+                          }
+                          icon={<AppstoreOutlined />}
+                          style={{ background: "#fafafa" }}
+                        />
+                        <div>
+                          <Typography.Text strong>{inst.package?.name}</Typography.Text>
+                          <div style={{ fontSize: 12, color: "#999" }}>
+                            v{inst.version?.version} →{" "}
+                            <Tag color="green">v{latestVersion}</Tag>
+                          </div>
+                        </div>
+                      </Space>
+                      <Button
+                        type="primary"
+                        icon={<CloudDownloadOutlined />}
+                        loading={updateM.isPending && updateM.variables?.instId === inst.id}
+                        onClick={() =>
+                          updateM.mutate({
+                            instId: inst.id,
+                            payload: { version_id: latestId },
+                          })
+                        }
+                      >
+                        Обновить
+                      </Button>
+                    </Space>
+                  </Card>
+                ))}
+              </>
+            ),
+          },
+        ]}
+      />
 
       <Drawer
         title={settingsFor ? `Настройки: ${settingsFor.package?.name}` : ""}

@@ -308,6 +308,11 @@ export interface AppManifestSetting {
   description?: string;
 }
 
+export interface AppManifestScreenshot {
+  path: string;
+  caption?: string | null;
+}
+
 export interface AppManifest {
   code: string;
   version: string;
@@ -320,6 +325,7 @@ export interface AppManifest {
   ui_slots?: AppManifestSlot[];
   settings_schema?: AppManifestSetting[];
   hooks?: { event: string; handler: string }[];
+  screenshots?: AppManifestScreenshot[];
 }
 
 export interface AppPackageRead {
