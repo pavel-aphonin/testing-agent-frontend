@@ -287,6 +287,100 @@ export interface WorkspaceMemberRead {
   joined_at: string;
 }
 
+// ---- Apps / extensions ----
+
+export type AppApprovalStatus = "draft" | "pending" | "approved" | "rejected";
+
+export interface AppManifestSlot {
+  slot: string;
+  label: string;
+  icon?: string | null;
+  path?: string;
+}
+
+export interface AppManifestSetting {
+  code: string;
+  name: string;
+  type: "string" | "number" | "boolean" | "secret" | "enum";
+  enum_values?: string[] | null;
+  required?: boolean;
+  default?: unknown;
+  description?: string;
+}
+
+export interface AppManifest {
+  code: string;
+  version: string;
+  name: string;
+  description?: string;
+  category?: string;
+  author?: string;
+  permissions_required?: string[];
+  role_required?: string[];
+  ui_slots?: AppManifestSlot[];
+  settings_schema?: AppManifestSetting[];
+  hooks?: { event: string; handler: string }[];
+}
+
+export interface AppPackageRead {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string;
+  author: string | null;
+  logo_path: string | null;
+  is_public: boolean;
+  owner_workspace_id: string | null;
+  approval_status: AppApprovalStatus;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  latest_version: string | null;
+  install_count: number;
+  avg_rating: number | null;
+  review_count: number;
+}
+
+export interface AppPackageVersionRead {
+  id: string;
+  app_package_id: string;
+  version: string;
+  manifest: AppManifest;
+  bundle_path: string;
+  changelog: string | null;
+  size_bytes: number;
+  is_deprecated: boolean;
+  created_at: string;
+}
+
+export interface AppInstallationRead {
+  id: string;
+  workspace_id: string;
+  app_package_id: string;
+  version_id: string;
+  settings: Record<string, unknown> | null;
+  is_enabled: boolean;
+  installed_by_user_id: string | null;
+  installed_at: string;
+  updated_at: string | null;
+  package: AppPackageRead | null;
+  version: AppPackageVersionRead | null;
+}
+
+export interface AppReviewRead {
+  id: string;
+  app_package_id: string;
+  user_id: string;
+  user_email: string;
+  rating: number;
+  text: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 // ---- Notifications + Invitations ----
 
 export interface NotificationRead {

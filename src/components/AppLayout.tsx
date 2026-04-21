@@ -1,5 +1,6 @@
 import {
   ApiOutlined,
+  AppstoreAddOutlined,
   AppstoreOutlined,
   BookOutlined,
   DatabaseOutlined,
@@ -12,6 +13,7 @@ import {
   MobileOutlined,
   PlayCircleOutlined,
   QuestionCircleOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   TeamOutlined,
   UserOutlined,
@@ -146,8 +148,13 @@ export function AppLayout() {
   // Workspace-context items (always shown)
   wsItems.push({
     key: "/workspace/members",
-    icon: <AppstoreOutlined />,
+    icon: <TeamOutlined />,
     label: <Link to="/workspace/members">Участники пространства</Link>,
+  });
+  wsItems.push({
+    key: "/workspace/apps",
+    icon: <AppstoreAddOutlined />,
+    label: <Link to="/workspace/apps">Приложения пространства</Link>,
   });
 
   // System group
@@ -184,6 +191,19 @@ export function AppLayout() {
       key: "/dictionaries",
       icon: <FileTextOutlined />,
       label: <Link to="/dictionaries">{t("nav.dictionaries")}</Link>,
+    });
+  }
+  // Магазин приложений — открыт всем
+  sysItems.push({
+    key: "/apps/store",
+    icon: <AppstoreAddOutlined />,
+    label: <Link to="/apps/store">Магазин приложений</Link>,
+  });
+  if (hasPerm("dictionaries.edit")) {
+    sysItems.push({
+      key: "/admin/apps",
+      icon: <SafetyCertificateOutlined />,
+      label: <Link to="/admin/apps">Модерация приложений</Link>,
     });
   }
 

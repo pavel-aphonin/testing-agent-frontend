@@ -16,6 +16,10 @@ import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
+import { AdminApps } from "@/pages/AdminApps";
+import { AppDetail } from "@/pages/AppDetail";
+import { AppsStore } from "@/pages/AppsStore";
+import { WorkspaceApps } from "@/pages/WorkspaceApps";
 import { WorkspaceDictionaries } from "@/pages/WorkspaceDictionaries";
 import { WorkspaceMembers } from "@/pages/WorkspaceMembers";
 import { HelpPage } from "@/pages/Help";
@@ -165,6 +169,17 @@ export default function App() {
           <Route
             path="/workspace/dictionaries"
             element={<WorkspaceDictionaries />}
+          />
+          <Route path="/apps/store" element={<AppsStore />} />
+          <Route path="/apps/:id" element={<AppDetail />} />
+          <Route path="/workspace/apps" element={<WorkspaceApps />} />
+          <Route
+            path="/admin/apps"
+            element={
+              <ProtectedRoute requirePermission="dictionaries.edit">
+                <AdminApps />
+              </ProtectedRoute>
+            }
           />
         </Route>
 
