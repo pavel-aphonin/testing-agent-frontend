@@ -1,549 +1,519 @@
-import { Anchor, Card, Col, Row, Typography } from "antd";
+import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  BugOutlined,
+  BulbOutlined,
+  FireOutlined,
+  QuestionCircleOutlined,
+  SearchOutlined,
+  SendOutlined,
+} from "@ant-design/icons";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert,
+  Button,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Radio,
+  Space,
+  Spin,
+  Typography,
+} from "antd";
+import { useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useNavigate, useParams } from "react-router-dom";
 
-const { Title, Paragraph, Text } = Typography;
+import {
+  getHelpArticle,
+  listHelpArticles,
+  listHelpSections,
+  popularHelpArticles,
+  submitFeedback,
+} from "@/api/help";
+import type { FeedbackKind, HelpArticleSummary, HelpSectionInfo } from "@/types";
+import { notify } from "@/utils/notify";
 
 /**
- * Official user manual for «Марков». Strict, encyclopaedic tone — no jokes,
- * no marketing. Designed to be the source of truth users link to when they
- * need to understand any feature in detail.
+ * Help portal modelled after Apple / Google help sites.
  *
- * Layout: anchor sidebar on the left for navigation, content cards on the
- * right. Each section maps to one feature area and follows the same structure:
- * назначение → как открыть → возможности → ограничения.
+ * Two URL states:
+ *   /help              — landing (search + popular + sections)
+ *   /help/<slug>       — single article
+ *
+ * Feedback form is a modal triggered from the CTA at the bottom of every
+ * page. All tickets go into the ``feedback_tickets`` table and surface
+ * in the admin inbox (see FeedbackInbox page).
  */
 export function HelpPage() {
+  const { slug } = useParams<{ slug?: string }>();
+  if (slug) return <ArticleView slug={slug} />;
+  return <HelpLanding />;
+}
+
+// ═══ Landing ═══════════════════════════════════════════════════════════════
+
+function HelpLanding() {
+  const nav = useNavigate();
+  const [q, setQ] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const sectionsQ = useQuery({
+    queryKey: ["help-sections"],
+    queryFn: listHelpSections,
+    staleTime: 10 * 60 * 1000,
+  });
+  const articlesQ = useQuery({
+    queryKey: ["help-articles", "all"],
+    queryFn: () => listHelpArticles(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const popularQ = useQuery({
+    queryKey: ["help-popular"],
+    queryFn: () => popularHelpArticles(6),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Live client-side filter — we already have the whole list in memory
+  // (it's small); no need to round-trip the server for each keystroke.
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return [];
+    return (articlesQ.data ?? []).filter((a) => {
+      return (
+        a.title.toLowerCase().includes(needle) ||
+        (a.excerpt ?? "").toLowerCase().includes(needle)
+      );
+    });
+  }, [q, articlesQ.data]);
+
+  const bySection = useMemo(() => {
+    const m = new Map<string, HelpArticleSummary[]>();
+    for (const a of articlesQ.data ?? []) {
+      if (!m.has(a.section)) m.set(a.section, []);
+      m.get(a.section)!.push(a);
+    }
+    return m;
+  }, [articlesQ.data]);
+
   return (
-    <Row gutter={24}>
-      <Col flex="220px">
-        <Anchor
-          affix
-          offsetTop={64}
-          items={[
-            { key: "intro", href: "#intro", title: "1. Назначение системы" },
-            { key: "roles", href: "#roles", title: "2. Роли и права доступа" },
-            { key: "runs", href: "#runs", title: "3. Запуски исследования" },
-            { key: "modes", href: "#modes", title: "4. Режимы работы агента" },
-            { key: "results", href: "#results", title: "5. Результаты запуска" },
-            { key: "defects", href: "#defects", title: "6. Дефекты и приоритеты" },
-            { key: "scenarios", href: "#scenarios", title: "7. Сценарии" },
-            { key: "test-data", href: "#test-data", title: "8. Тестовые данные" },
-            { key: "knowledge", href: "#knowledge", title: "9. База знаний (RAG)" },
-            { key: "devices", href: "#devices", title: "10. Устройства" },
-            { key: "models", href: "#models", title: "11. LLM-модели" },
-            { key: "settings", href: "#settings", title: "12. Настройки агента" },
-            { key: "assistant", href: "#assistant", title: "13. Помощник" },
-            { key: "architecture", href: "#architecture", title: "14. Архитектура" },
-            { key: "glossary", href: "#glossary", title: "15. Термины" },
-          ]}
-        />
-      </Col>
+    <>
+      <style>{`
+        .help-page { max-width: 1100px; margin: 0 auto; }
+        .help-hero {
+          text-align: center; padding: 40px 24px 32px;
+          background: linear-gradient(160deg, #fff3f3 0%, #fff 80%);
+          border-radius: 20px; border: 1px solid #f0dcda;
+          margin-bottom: 28px;
+        }
+        .help-hero h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.6px; margin: 0 0 6px; }
+        .help-hero p { color: #595959; font-size: 15px; margin: 0 0 22px; }
+        .help-search {
+          max-width: 560px; margin: 0 auto;
+        }
+        .help-search .ant-input-affix-wrapper {
+          border-radius: 999px !important; padding: 10px 18px;
+          box-shadow: 0 2px 10px rgba(0,0,0,.05);
+        }
 
-      <Col flex="auto" style={{ minWidth: 0 }}>
-        <Card>
-          <Title level={2}>Руководство пользователя</Title>
-          <Paragraph type="secondary">
-            Документ описывает работу системы «Марков» — инструмента
-            автоматического исследовательского тестирования мобильных
-            приложений на основе локальных моделей искусственного
-            интеллекта. Версия документа соответствует текущей версии
-            системы.
-          </Paragraph>
+        .help-section-title {
+          font-size: 20px; font-weight: 600; letter-spacing: -0.3px;
+          margin: 32px 0 14px; display: flex; align-items: center; gap: 10px;
+        }
 
-          <section id="intro">
-            <Title level={3}>1. Назначение системы</Title>
-            <Paragraph>
-              «Марков» предназначен для автоматизированного исследования
-              пользовательских интерфейсов мобильных приложений (iOS,
-              Android), выявления дефектов, построения карты переходов
-              между экранами и формирования основы тестовой модели
-              приложения. Имя системы отсылает к процессам Маркова, на
-              которых построена логика выбора следующего действия:
-              новое состояние зависит только от текущего наблюдаемого
-              состояния экрана.
-            </Paragraph>
-            <Paragraph>
-              Применение: ускорение регрессионного тестирования,
-              формирование тест-кейсов на основе результатов прогона,
-              поиск дефектов валидации форм, актуализация документации.
-            </Paragraph>
-          </section>
+        .help-card {
+          border: 1px solid #ececec; border-radius: 14px;
+          padding: 18px; background: #fff; cursor: pointer;
+          transition: all .18s ease; height: 100%;
+        }
+        .help-card:hover { border-color: #EE3424; transform: translateY(-2px);
+          box-shadow: 0 4px 16px rgba(238,52,36,.07); }
+        .help-card .article-title { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+        .help-card .article-excerpt {
+          color: #595959; font-size: 13px; line-height: 1.5;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .help-card .article-meta { margin-top: 10px; font-size: 11.5px; color: #8c8c8c; }
 
-          <section id="roles">
-            <Title level={3}>2. Роли и права доступа</Title>
-            <Paragraph>
-              В системе предусмотрены три роли. Учётные записи
-              создаются администратором, регистрация пользователей не
-              предусмотрена.
-            </Paragraph>
-            <ul>
-              <li>
-                <Text strong>Администратор (admin).</Text> Полный доступ.
-                Управление пользователями, моделями, устройствами, базой
-                знаний, сценариями, общими настройками агента.
-              </li>
-              <li>
-                <Text strong>Тестировщик (tester).</Text> Создание и
-                запуск исследований, работа с тестовыми данными,
-                просмотр результатов. Не имеет доступа к
-                административным разделам.
-              </li>
-              <li>
-                <Text strong>Наблюдатель (viewer).</Text> Только
-                просмотр результатов. Запуск исследования невозможен.
-              </li>
-            </ul>
-          </section>
+        .help-section-card {
+          border: 1px solid #ececec; border-radius: 14px;
+          padding: 22px; background: #fff; cursor: pointer;
+          transition: all .18s ease;
+        }
+        .help-section-card:hover { border-color: #EE3424; background: #fff3f3; }
+        .help-section-card .sec-icon { font-size: 28px; margin-bottom: 10px; }
+        .help-section-card .sec-title {
+          font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.2px;
+        }
+        .help-section-card .sec-count { color: #8c8c8c; font-size: 12.5px; }
 
-          <section id="runs">
-            <Title level={3}>3. Запуски исследования</Title>
-            <Paragraph>
-              Раздел «Запуски» содержит список всех проведённых и
-              текущих исследований. Создание нового запуска выполняется
-              кнопкой «Новый запуск». В диалоге создания требуется:
-            </Paragraph>
-            <ol>
-              <li>
-                Загрузить файл сборки приложения. Поддерживаются
-                форматы <Text code>.app.zip</Text>,{" "}
-                <Text code>.ipa</Text> для iOS и{" "}
-                <Text code>.apk</Text> для Android.
-              </li>
-              <li>
-                Выбрать устройство. Список устройств формируется
-                администратором в разделе «Устройства».
-              </li>
-              <li>
-                Выбрать режим работы агента (см. раздел 4).
-              </li>
-              <li>
-                При необходимости включить выполнение сценариев и
-                выбрать конкретные сценарии из активных.
-              </li>
-              <li>
-                При необходимости включить режим Property-Based Testing
-                для систематической проверки валидации форм.
-              </li>
-            </ol>
-            <Paragraph>
-              Запуск исследования занимает от нескольких минут до
-              нескольких часов в зависимости от размера приложения и
-              значения параметра «максимальное число шагов». Текущий
-              ход исследования отображается в реальном времени на
-              странице «Прогресс запуска» с трансляцией экрана
-              устройства.
-            </Paragraph>
-            <Paragraph>
-              Запуск может быть прерван пользователем. При удалении
-              запуска, находящегося в активном состоянии, он
-              автоматически отменяется.
-            </Paragraph>
-          </section>
+        .cta-feedback {
+          margin-top: 40px; padding: 28px 30px;
+          background: #fafafa; border-radius: 16px; border: 1px solid #ececec;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 24px; flex-wrap: wrap;
+        }
+        .cta-feedback h3 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+        .cta-feedback p { color: #595959; margin: 0; font-size: 13px; }
 
-          <section id="modes">
-            <Title level={3}>4. Режимы работы агента</Title>
-            <Paragraph>
-              Система поддерживает три режима исследования.
-            </Paragraph>
-            <ul>
-              <li>
-                <Text strong>AI.</Text> Каждое действие выбирается
-                языковой моделью на основе анализа структуры экрана и
-                истории действий. Используется модель Gemma 4 E4B с
-                поддержкой обработки изображений. Режим обеспечивает
-                наиболее осмысленное поведение, но требует большего
-                времени работы модели.
-              </li>
-              <li>
-                <Text strong>MC (Monte-Carlo).</Text> Случайный обход
-                интерактивных элементов без использования языковой
-                модели. Выбор следующего действия выполняется по
-                критерию неисследованных переходов. Режим применяется
-                для быстрой проверки доступности экранов.
-              </li>
-              <li>
-                <Text strong>Hybrid.</Text> Комбинированный режим. Для
-                простых решений (выбор следующего элемента в форме)
-                используется эвристика, для решений в новых состояниях
-                — языковая модель. Рекомендуется как режим по
-                умолчанию.
-              </li>
-            </ul>
-          </section>
+        .row-grid-3 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+        .row-grid-4 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+      `}</style>
 
-          <section id="results">
-            <Title level={3}>5. Результаты запуска</Title>
-            <Paragraph>
-              По завершении запуска формируется отчёт, содержащий:
-            </Paragraph>
-            <ul>
-              <li>
-                Общую статистику: количество найденных экранов,
-                количество переходов, продолжительность исследования,
-                режим работы.
-              </li>
-              <li>
-                Список найденных дефектов с приоритетами и
-                категориями. Подробнее в разделе 6.
-              </li>
-              <li>
-                Поиск пути между экранами. Позволяет найти кратчайшую
-                последовательность действий между двумя выбранными
-                экранами на основе обнаруженных переходов.
-              </li>
-              <li>
-                Граф состояний приложения. Узлы графа — найденные
-                экраны, рёбра — обнаруженные переходы. Поддерживается
-                выбор библиотеки визуализации в настройках профиля.
-              </li>
-              <li>
-                Таблицу экранов и таблицу переходов с возможностью
-                фильтрации.
-              </li>
-              <li>
-                Экспорт диаграммы в формате Mermaid для встраивания в
-                документацию.
-              </li>
-            </ul>
-          </section>
+      <div className="help-page">
+        <div className="help-hero">
+          <h1>Справочный центр</h1>
+          <p>Ответы на вопросы о работе с Марковом — от первого запуска до разработки расширений.</p>
+          <div className="help-search">
+            <Input
+              size="large"
+              prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+              placeholder="Поиск по названию или содержанию статьи…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              allowClear
+            />
+          </div>
+        </div>
 
-          <section id="defects">
-            <Title level={3}>6. Дефекты и приоритеты</Title>
-            <Paragraph>
-              После выполнения каждого действия агент с помощью
-              отдельной языковой модели (Qwen3-8B Instruct) проводит
-              анализ результата. Анализ определяет, является ли
-              наблюдаемое поведение дефектом, и присваивает приоритет.
-            </Paragraph>
-            <Paragraph>
-              Приоритеты дефектов:
-            </Paragraph>
-            <ul>
-              <li>
-                <Text strong>P0 — блокер.</Text> Аварийное завершение
-                приложения, нарушение основного бизнес-сценария
-                (авторизация, оплата), потеря данных.
-              </li>
-              <li>
-                <Text strong>P1 — критический.</Text> Функция не
-                работает, недостижимый экран, явное нарушение
-                спецификации.
-              </li>
-              <li>
-                <Text strong>P2 — существенный.</Text> Функция работает
-                некорректно (например, валидация пропускает
-                недопустимые значения).
-              </li>
-              <li>
-                <Text strong>P3 — незначительный.</Text> Косметические
-                дефекты, дефекты редких сценариев.
-              </li>
-            </ul>
-            <Paragraph>
-              Категории дефектов: функциональные, интерфейсные,
-              валидационные, навигационные, производительности,
-              аварийных завершений, несоответствия спецификации.
-              Отдельная категория «инфраструктурный шум» используется
-              для отсева ситуаций, не являющихся дефектами приложения
-              (потеря сетевого соединения, проблемы тестовой среды,
-              некорректные тестовые данные).
-            </Paragraph>
-          </section>
+        {q.trim() ? (
+          <SearchResults nav={nav} articles={filtered} query={q} />
+        ) : (
+          <>
+            {(popularQ.data?.length ?? 0) > 0 && (
+              <section>
+                <h2 className="help-section-title">
+                  <FireOutlined style={{ color: "#EE3424" }} /> Популярные статьи
+                </h2>
+                <div className="row-grid-3">
+                  {(popularQ.data ?? []).map((a) => (
+                    <ArticleCard key={a.id} article={a} onOpen={() => nav(`/help/${a.slug}`)} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-          <section id="scenarios">
-            <Title level={3}>7. Сценарии</Title>
-            <Paragraph>
-              Сценарий — пошаговая инструкция для агента, описывающая
-              требуемую последовательность действий. Используется
-              когда необходимо проверить конкретный путь в приложении
-              (например, оформление заказа), а не предоставить агенту
-              свободу исследования.
-            </Paragraph>
-            <Paragraph>
-              Раздел «Сценарии» поддерживает три представления одного
-              и того же содержимого:
-            </Paragraph>
-            <ul>
-              <li>
-                <Text strong>Конструктор.</Text> Список карточек шагов
-                с полями: экран, действие, элемент, значение, ожидаемый
-                результат.
-              </li>
-              <li>
-                <Text strong>Блок-схема.</Text> Интерактивная схема
-                переходов с возможностью перетаскивания узлов и
-                редактирования по клику. Реализовано на React Flow.
-              </li>
-              <li>
-                <Text strong>JSON.</Text> Прямое редактирование
-                структуры данных. Применяется для импорта и экспорта.
-              </li>
-            </ul>
-            <Paragraph>
-              В поле значения шага допускается подстановка из раздела
-              «Тестовые данные» в формате{" "}
-              <Text code>{"{{test_data.email}}"}</Text>. Подстановка
-              выполняется на стороне агента непосредственно перед
-              вводом.
-            </Paragraph>
-          </section>
+            {(sectionsQ.data?.length ?? 0) > 0 && (
+              <section>
+                <h2 className="help-section-title">Разделы</h2>
+                <div className="row-grid-4">
+                  {(sectionsQ.data ?? []).map((s: HelpSectionInfo) => {
+                    const count = bySection.get(s.key)?.length ?? 0;
+                    return (
+                      <div
+                        key={s.key}
+                        className="help-section-card"
+                        onClick={() => nav(`/help?section=${s.key}`)}
+                      >
+                        <div className="sec-icon">{s.icon}</div>
+                        <h4 className="sec-title">{s.label}</h4>
+                        <div className="sec-count">
+                          {count > 0 ? `${count} ${plural(count, ["статья", "статьи", "статей"])}` : "нет статей"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
-          <section id="test-data">
-            <Title level={3}>8. Тестовые данные</Title>
-            <Paragraph>
-              Раздел содержит пары «ключ-значение», которые агент
-              использует при заполнении форм. Тестовые данные могут
-              быть подставлены как в свободном режиме исследования (по
-              имени поля), так и в сценариях (явно через подстановку).
-            </Paragraph>
-            <Paragraph>
-              Поддерживаются категории для удобства группировки:
-              авторизация, платежи, личные данные, общие. Категория
-              не влияет на работу агента.
-            </Paragraph>
-            <Paragraph>
-              Значения с ключами, содержащими «password», «пароль»,
-              «secret», «token», «pin», отображаются в маскированном
-              виде в таблице и журналах.
-            </Paragraph>
-          </section>
+            {(sectionsQ.data ?? []).map((s: HelpSectionInfo) => {
+              const list = bySection.get(s.key) ?? [];
+              if (list.length === 0) return null;
+              return (
+                <section key={s.key}>
+                  <h2 className="help-section-title">
+                    <span>{s.icon}</span> {s.label}
+                  </h2>
+                  <div className="row-grid-3">
+                    {list.map((a) => (
+                      <ArticleCard key={a.id} article={a} onOpen={() => nav(`/help/${a.slug}`)} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </>
+        )}
 
-          <section id="knowledge">
-            <Title level={3}>9. База знаний (RAG)</Title>
-            <Paragraph>
-              База знаний хранит документы, к которым агент и
-              пользователь могут обращаться через семантический поиск.
-              Используется конвейер RAG (Retrieval-Augmented
-              Generation), состоящий из трёх локальных моделей:
-            </Paragraph>
-            <ul>
-              <li>
-                Эмбеддинги: <Text code>Qwen3-Embedding-8B</Text>,
-                размерность 4096, контекст 32К токенов, мультиязычная.
-              </li>
-              <li>
-                Реранкер: <Text code>Qwen3-Reranker-8B</Text>. Уточняет
-                порядок результатов на втором этапе после векторного
-                поиска.
-              </li>
-              <li>
-                Генерация ответа: <Text code>Qwen3-8B Instruct</Text>.
-                Формирует ответ на естественном языке, ссылаясь на
-                найденные фрагменты документов.
-              </li>
-            </ul>
-            <Paragraph>
-              Поддерживаемые форматы загрузки: PDF, DOCX, XLSX, PPTX,
-              ODT, ODS, ODP, RTF, MD, TXT, CSV, JSON, XML, YAML.
-              Бинарные форматы обрабатываются на стороне сервера,
-              текстовые — заполняют форму для предварительного
-              просмотра. После загрузки документ автоматически
-              разбивается на фрагменты и индексируется.
-            </Paragraph>
-            <Paragraph>
-              При недоступности сервера эмбеддинг-модели в момент
-              загрузки документ помечается специальным значением{" "}
-              <Text code>fake-hash-*</Text>. Поиск по такому документу
-              работать не будет. Кнопка повторной индексации позволяет
-              пересчитать эмбеддинги после восстановления сервера
-              моделей.
-            </Paragraph>
-          </section>
+        <div className="cta-feedback">
+          <div>
+            <h3><BulbOutlined style={{ color: "#EE3424", marginRight: 8 }} />Не нашли ответ?</h3>
+            <p>Напишите нам — мы читаем каждое обращение. Баги, вопросы, предложения — всё пригодится.</p>
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              size="large"
+              onClick={() => setFeedbackOpen(true)}
+            >
+              Написать обращение
+            </Button>
+          </Space>
+        </div>
 
-          <section id="devices">
-            <Title level={3}>10. Устройства</Title>
-            <Paragraph>
-              Раздел «Устройства» содержит список доступных тестировщикам
-              комбинаций «модель устройства + версия операционной
-              системы». Список формируется администратором. При
-              создании запуска тестировщик выбирает устройство из
-              этого списка. Агент использует средства симуляции
-              соответствующей платформы (Xcode Simulator, Android
-              Emulator) для запуска приложения.
-            </Paragraph>
-            <Paragraph>
-              Подключение реальных физических устройств в текущей
-              версии системы не реализовано.
-            </Paragraph>
-          </section>
+        {(articlesQ.isLoading || sectionsQ.isLoading) && (
+          <div style={{ textAlign: "center", marginTop: 40 }}><Spin /></div>
+        )}
+      </div>
 
-          <section id="models">
-            <Title level={3}>11. LLM-модели</Title>
-            <Paragraph>
-              Раздел «LLM-модели» позволяет администратору
-              регистрировать локальные языковые модели в формате GGUF.
-              Регистрация выполняется указанием пути к файлу модели и
-              описанием её возможностей (контекстное окно, поддержка
-              изображений, поддержка вызова функций).
-            </Paragraph>
-            <Paragraph>
-              Поддерживается поиск и загрузка моделей с Hugging Face
-              непосредственно из интерфейса. После завершения загрузки
-              модель регистрируется автоматически.
-            </Paragraph>
-            <Paragraph>
-              Каждая модель назначается на одну из ролей: модель
-              анализа изображений (Vision), модель планирования
-              (Thinking), модель выполнения инструкций (Instruct),
-              модель кодирования (Coder).
-            </Paragraph>
-          </section>
-
-          <section id="settings">
-            <Title level={3}>12. Настройки агента</Title>
-            <Paragraph>
-              Раздел содержит общие параметры работы агента, действующие
-              для всех новых запусков пользователя:
-            </Paragraph>
-            <ul>
-              <li>
-                Максимальное количество шагов исследования по
-                умолчанию.
-              </li>
-              <li>
-                Параметры алгоритма PUCT (используется в режиме
-                Hybrid): константа исследования, глубина прокрутки.
-              </li>
-              <li>
-                Включение использования базы знаний для проверки
-                поведения приложения по спецификации.
-              </li>
-              <li>
-                Выбор библиотеки визуализации графа состояний:
-                React Flow, Cytoscape, vis-network.
-              </li>
-              <li>
-                Язык интерфейса: русский или английский.
-              </li>
-              <li>
-                Назначение моделей на роли (Vision, Thinking,
-                Instruct, Coder).
-              </li>
-            </ul>
-          </section>
-
-          <section id="assistant">
-            <Title level={3}>13. Помощник</Title>
-            <Paragraph>
-              Помощник представляет собой встроенного AI-консультанта,
-              доступного из верхнего меню системы. В отличие от
-              справочного раздела (этого документа), помощник имеет
-              доступ к контексту текущего экрана и работает с
-              фактическими данными:
-            </Paragraph>
-            <ul>
-              <li>На странице запуска — анализирует список найденных дефектов;</li>
-              <li>На странице сценария — проверяет шаги на ошибки и пропуски;</li>
-              <li>На странице базы знаний — рекомендует документы для загрузки;</li>
-              <li>На общих страницах — даёт общие рекомендации.</li>
-            </ul>
-            <Paragraph>
-              Помощник используется для приоритизации, формулирования
-              описаний дефектов, планирования последующих действий.
-              Помощник не заменяет данный документ при необходимости
-              получения детального описания возможностей системы.
-            </Paragraph>
-          </section>
-
-          <section id="architecture">
-            <Title level={3}>14. Архитектура</Title>
-            <Paragraph>
-              Система построена на основе микросервисной архитектуры.
-              Все языковые модели работают локально, без обращения к
-              внешним API.
-            </Paragraph>
-            <Paragraph>
-              Основные компоненты:
-            </Paragraph>
-            <ul>
-              <li>
-                <Text strong>Frontend.</Text> Веб-интерфейс, React +
-                Ant Design.
-              </li>
-              <li>
-                <Text strong>Backend.</Text> REST API на FastAPI,
-                асинхронное взаимодействие с PostgreSQL через
-                SQLAlchemy. Хранилище векторных представлений —
-                pgvector.
-              </li>
-              <li>
-                <Text strong>Worker.</Text> Процесс, выполняющий
-                непосредственное исследование приложения.
-                Взаимодействует с симулятором устройства через AXe для
-                iOS и UI Automator для Android.
-              </li>
-              <li>
-                <Text strong>LLM-серверы.</Text> Несколько процессов
-                llama.cpp, обслуживающих языковые модели на портах
-                8080 (агент), 8082 (эмбеддинги), 8083 (RAG-генерация),
-                8084 (реранкер).
-              </li>
-              <li>
-                <Text strong>SimMirror.</Text> Утилита для
-                трансляции экрана iOS-симулятора на основе
-                ScreenCaptureKit. Используется для отображения хода
-                исследования в реальном времени.
-              </li>
-              <li>
-                <Text strong>Redis.</Text> Брокер сообщений для
-                реального времени и кэширования.
-              </li>
-            </ul>
-          </section>
-
-          <section id="glossary">
-            <Title level={3}>15. Термины</Title>
-            <Paragraph>
-              <Text strong>Запуск (run).</Text> Сессия исследования
-              одного приложения с заданными параметрами.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Экран (screen).</Text> Отдельное состояние
-              интерфейса приложения, идентифицируемое стабильным хешем
-              структурных элементов.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Переход (edge).</Text> Действие, в
-              результате которого приложение перешло из одного экрана в
-              другой.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Сценарий (scenario).</Text> Заранее
-              заданная последовательность действий для агента.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Дефект (defect).</Text> Зафиксированное
-              агентом отклонение поведения приложения от ожидаемого.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Цепь Маркова.</Text> Математическая модель
-              процесса, в котором вероятность следующего состояния
-              зависит только от текущего, но не от истории. Используется
-              как теоретическая основа алгоритма исследования.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>RAG (Retrieval-Augmented Generation).</Text>{" "}
-              Архитектурный шаблон, в котором ответ языковой модели
-              формируется с использованием релевантных фрагментов из
-              базы знаний.
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Property-Based Testing (PBT).</Text> Подход
-              к тестированию, при котором проверяемая функциональность
-              исполняется на множестве сгенерированных входных
-              значений (граничные случаи, специальные символы,
-              переполнение).
-            </Paragraph>
-            <Paragraph>
-              <Text strong>Synthetic-исполнитель.</Text> Тестовый режим
-              работы worker-процесса, при котором исследование
-              имитируется без реального симулятора. Используется для
-              проверки целостности конвейера данных в среде
-              разработки. Идентификаторы экранов в этом режиме
-              имеют префикс <Text code>synthetic-</Text>.
-            </Paragraph>
-          </section>
-        </Card>
-      </Col>
-    </Row>
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+    </>
   );
+}
+
+function SearchResults({
+  nav,
+  articles,
+  query,
+}: {
+  nav: ReturnType<typeof useNavigate>;
+  articles: HelpArticleSummary[];
+  query: string;
+}) {
+  if (articles.length === 0) {
+    return (
+      <Empty
+        description={`По запросу «${query}» ничего не найдено`}
+        style={{ marginTop: 48 }}
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+      />
+    );
+  }
+  return (
+    <section>
+      <h2 className="help-section-title">
+        Результаты поиска <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>
+          — найдено {articles.length}
+        </Typography.Text>
+      </h2>
+      <div className="row-grid-3">
+        {articles.map((a) => (
+          <ArticleCard key={a.id} article={a} onOpen={() => nav(`/help/${a.slug}`)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ArticleCard({
+  article,
+  onOpen,
+}: {
+  article: HelpArticleSummary;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="help-card" onClick={onOpen}>
+      <h4 className="article-title">{article.title}</h4>
+      <div className="article-excerpt">{article.excerpt ?? ""}</div>
+      <div className="article-meta">
+        {article.views_28d > 0 && (
+          <span>
+            <FireOutlined style={{ color: "#EE3424" }} /> {article.views_28d}
+            {" "}за месяц
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══ Single article ════════════════════════════════════════════════════════
+
+function ArticleView({ slug }: { slug: string }) {
+  const nav = useNavigate();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const articleQ = useQuery({
+    queryKey: ["help-article", slug],
+    queryFn: () => getHelpArticle(slug),
+  });
+
+  if (articleQ.isLoading) {
+    return <div style={{ textAlign: "center", padding: 80 }}><Spin size="large" /></div>;
+  }
+  if (articleQ.isError || !articleQ.data) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Статья не найдена"
+        description="Возможно, её переименовали или удалили."
+        action={<Button onClick={() => nav("/help")}>Вернуться в справку</Button>}
+      />
+    );
+  }
+
+  const a = articleQ.data;
+  return (
+    <>
+      <style>{`
+        .help-article { max-width: 760px; margin: 0 auto; padding: 0 4px; }
+        .help-article h1 { font-size: 28px; font-weight: 600; margin: 12px 0 10px; letter-spacing: -0.4px; }
+        .help-article .article-meta { color: #8c8c8c; font-size: 13px; margin-bottom: 24px; }
+        .help-article .md h1, .help-article .md h2, .help-article .md h3 {
+          font-weight: 600; letter-spacing: -0.2px; margin: 22px 0 8px;
+        }
+        .help-article .md h1 { font-size: 22px; }
+        .help-article .md h2 { font-size: 18px; }
+        .help-article .md h3 { font-size: 15px; color: #595959; }
+        .help-article .md p  { line-height: 1.7; margin: 10px 0; }
+        .help-article .md ul, .help-article .md ol { line-height: 1.7; padding-left: 24px; }
+        .help-article .md li { margin: 4px 0; }
+        .help-article .md code {
+          background: #f5f5f5; padding: 1px 5px; border-radius: 4px;
+          font-size: 12.5px; color: #c41d7f;
+        }
+        .help-article .md pre {
+          background: #fafafa; border: 1px solid #f0f0f0; padding: 14px 16px;
+          border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.55;
+        }
+        .help-article .md pre code { background: transparent; padding: 0; color: inherit; }
+        .help-article .md a { color: #EE3424; }
+        .help-article .md blockquote {
+          border-left: 3px solid #EE3424; padding-left: 12px; color: #595959; margin: 10px 0;
+        }
+      `}</style>
+
+      <div className="help-article">
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => nav("/help")}
+          style={{ marginBottom: 12, padding: "4px 8px" }}
+        >
+          Вся справка
+        </Button>
+        <h1>{a.title}</h1>
+        <div className="article-meta">
+          {a.views_28d > 0 && <><FireOutlined style={{ color: "#EE3424" }} /> {a.views_28d} просмотров за месяц · </>}
+          обновлено {new Date(a.updated_at ?? a.created_at).toLocaleDateString("ru-RU")}
+        </div>
+        <div className="md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{a.body_md}</ReactMarkdown>
+        </div>
+
+        <div className="cta-feedback" style={{ marginTop: 48 }}>
+          <div>
+            <h3><QuestionCircleOutlined style={{ color: "#EE3424", marginRight: 8 }} />Статья помогла?</h3>
+            <p>Если нет — опишите, чего не хватает. Мы дополним или ответим лично.</p>
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={() => setFeedbackOpen(true)}
+            >
+              Написать обращение
+            </Button>
+            <Button onClick={() => nav("/help")}>
+              К другим статьям <ArrowRightOutlined />
+            </Button>
+          </Space>
+        </div>
+      </div>
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        context={{ article_slug: slug, url: window.location.pathname }}
+      />
+    </>
+  );
+}
+
+// ═══ Feedback modal ════════════════════════════════════════════════════════
+
+function FeedbackModal({
+  open,
+  onClose,
+  context,
+}: {
+  open: boolean;
+  onClose: () => void;
+  context?: Record<string, unknown>;
+}) {
+  const [form] = Form.useForm<{ kind: FeedbackKind; subject: string; body: string }>();
+  const qc = useQueryClient();
+
+  const m = useMutation({
+    mutationFn: (values: { kind: FeedbackKind; subject: string; body: string }) =>
+      submitFeedback({ ...values, context }),
+    onSuccess: () => {
+      notify.success("Спасибо! Обращение отправлено, мы ответим вам на почту.");
+      form.resetFields();
+      onClose();
+      qc.invalidateQueries({ queryKey: ["feedback-inbox"] });
+    },
+    onError: (e: any) =>
+      notify.error(e?.response?.data?.detail ?? "Не удалось отправить"),
+  });
+
+  return (
+    <Modal
+      title={<><BugOutlined style={{ color: "#EE3424", marginRight: 8 }} />Обращение в поддержку</>}
+      open={open}
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      okText="Отправить"
+      cancelText="Отмена"
+      confirmLoading={m.isPending}
+      width={560}
+      destroyOnHidden
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ kind: "question" }}
+        onFinish={(v) => m.mutate(v)}
+      >
+        <Form.Item name="kind" label="Тип обращения">
+          <Radio.Group>
+            <Radio.Button value="bug">Баг</Radio.Button>
+            <Radio.Button value="question">Вопрос</Radio.Button>
+            <Radio.Button value="proposal">Предложение</Radio.Button>
+            <Radio.Button value="other">Другое</Radio.Button>
+          </Radio.Group>
+        </Form.Item>
+        <Form.Item
+          name="subject"
+          label="Тема"
+          rules={[
+            { required: true, message: "Укажите короткую тему" },
+            { min: 3, max: 300 },
+          ]}
+        >
+          <Input placeholder="Например: не запускается исследование на iPhone 17 Pro Max" />
+        </Form.Item>
+        <Form.Item
+          name="body"
+          label="Описание"
+          rules={[{ required: true, message: "Опишите ситуацию" }, { min: 5 }]}
+        >
+          <Input.TextArea
+            rows={6}
+            placeholder="Что вы делали, что ожидали, что произошло. Приложите по возможности шаги воспроизведения и версию браузера."
+          />
+        </Form.Item>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Обращения попадают к администраторам Маркова. Позже мы синхронизируем их в Jira.
+        </Typography.Text>
+      </Form>
+    </Modal>
+  );
+}
+
+// ═══ Helpers ═══════════════════════════════════════════════════════════════
+
+function plural(n: number, forms: [string, string, string]): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m100 >= 11 && m100 <= 14) return forms[2];
+  if (m10 === 1) return forms[0];
+  if (m10 >= 2 && m10 <= 4) return forms[1];
+  return forms[2];
 }

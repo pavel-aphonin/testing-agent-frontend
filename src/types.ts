@@ -16,6 +16,9 @@ export interface CurrentUser {
   role_code: string;
   permissions: string[];
   must_change_password: boolean;
+  /** Relative path under app_uploads_dir; null = default circle with
+   *  the first letter of the email. */
+  avatar_path: string | null;
 }
 
 export interface AdminUser extends CurrentUser {}
@@ -301,11 +304,14 @@ export interface AppManifestSlot {
 export interface AppManifestSetting {
   code: string;
   name: string;
-  type: "string" | "number" | "boolean" | "secret" | "enum";
+  type: "string" | "text" | "number" | "boolean" | "secret" | "enum";
   enum_values?: string[] | null;
   required?: boolean;
   default?: unknown;
+  /** Tooltip text shown when the user hovers the "?" icon next to the field. */
   description?: string;
+  /** Optional section label. Fields sharing a group render together. */
+  group?: string | null;
 }
 
 export interface AppManifestScreenshot {
@@ -336,6 +342,7 @@ export interface AppPackageRead {
   category: string;
   author: string | null;
   logo_path: string | null;
+  cover_path: string | null;
   is_public: boolean;
   owner_workspace_id: string | null;
   approval_status: AppApprovalStatus;
@@ -362,6 +369,159 @@ export interface AppPackageVersionRead {
   created_at: string;
 }
 
+export interface AppInstallationUserPrefs {
+  /** Hide the app's sidebar slot(s) from MY view. Admin still sees it. */
+  hidden_from_sidebar?: boolean;
+  /** Hide the app's top_bar slot(s) from MY view. */
+  hidden_from_top_bar?: boolean;
+  /** Extensible — unknown keys are preserved. */
+  [key: string]: unknown;
+}
+
+/** Per-theme-mode color palette. All fields optional; missing ones
+ *  fall back to the built-in Markov defaults on the frontend.
+ *  Semantic colors (success/warning/error/info) are NOT here — those
+ *  are defined via dedicated dictionaries (defect priorities,
+ *  notification types, etc.). */
+export interface ThemeModeTokens {
+  /** Accent — buttons, active states, highlights. */
+  colorPrimary?: string | null;
+  /** Link color in prose. */
+  colorLink?: string | null;
+  /** Link under hover. */
+  colorLinkHover?: string | null;
+  /** Card / table / modal surface. */
+  colorBgContainer?: string | null;
+  /** Page wash behind cards. */
+  colorBgLayout?: string | null;
+  /** Sidebar panel background. */
+  sidebarBg?: string | null;
+  /** Sidebar item on hover. */
+  sidebarItemHoverBg?: string | null;
+  /** Sidebar item when selected (= current route). */
+  sidebarItemSelectedBg?: string | null;
+}
+
+/** Full AntD-compatible token blob we allow customization of. */
+export interface ThemeTokens {
+  light?: ThemeModeTokens;
+  dark?: ThemeModeTokens;
+  borderRadius?: number | null;
+  fontFamily?: string | null;
+  /** Base font size in px. Default 14. */
+  fontSize?: number | null;
+}
+
+export interface BrandingRead {
+  product_name: string | null;
+  short_name: string | null;
+  logo_path: string | null;
+  logo_back_path: string | null;
+  favicon_path: string | null;
+  theme_tokens: ThemeTokens | null;
+  updated_at: string;
+}
+
+export interface ReleaseNoteSummary {
+  id: string;
+  version: string;
+  title: string;
+  excerpt: string | null;
+  released_at: string;
+  is_published: boolean;
+  dismissed: boolean;
+}
+
+export interface ReleaseNoteFull extends ReleaseNoteSummary {
+  body_md: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface ReleaseNotesUnread {
+  unread_count: number;
+  latest: ReleaseNoteSummary | null;
+}
+
+export type AppAuditAction =
+  | "installed"
+  | "version_changed"
+  | "settings_changed"
+  | "enabled"
+  | "disabled"
+  | "uninstalled";
+
+export interface AppInstallationAuditRead {
+  id: string;
+  workspace_id: string;
+  app_package_id: string | null;
+  installation_id: string | null;
+  package_name: string | null;
+  action: AppAuditAction;
+  from_version: string | null;
+  to_version: string | null;
+  details: Record<string, unknown> | null;
+  user_id: string | null;
+  user_email: string | null;
+  created_at: string;
+}
+
+export type HelpSectionKey =
+  | "getting_started"
+  | "runs"
+  | "scenarios"
+  | "apps"
+  | "admin"
+  | "api"
+  | "troubleshooting";
+
+export interface HelpSectionInfo {
+  key: HelpSectionKey;
+  label: string;
+  icon: string;
+}
+
+export interface HelpArticleSummary {
+  id: string;
+  slug: string;
+  title: string;
+  section: HelpSectionKey;
+  excerpt: string | null;
+  sort_order: number;
+  views_28d: number;
+  updated_at: string | null;
+  created_at: string;
+}
+
+export interface HelpArticleFull extends HelpArticleSummary {
+  body_md: string;
+}
+
+export type FeedbackKind = "bug" | "question" | "proposal" | "other";
+export type FeedbackStatus = "new" | "in_progress" | "closed";
+
+export interface FeedbackSubmit {
+  kind: FeedbackKind;
+  subject: string;
+  body: string;
+  context?: Record<string, unknown>;
+}
+
+export interface FeedbackTicketRead {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  kind: FeedbackKind;
+  subject: string;
+  body: string;
+  context: Record<string, unknown> | null;
+  status: FeedbackStatus;
+  external_id: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface AppInstallationRead {
   id: string;
   workspace_id: string;
@@ -374,6 +534,8 @@ export interface AppInstallationRead {
   updated_at: string | null;
   package: AppPackageRead | null;
   version: AppPackageVersionRead | null;
+  /** Current user's per-installation UI toggles. Empty object = defaults. */
+  user_prefs: AppInstallationUserPrefs;
 }
 
 export interface AppReviewRead {
@@ -592,6 +754,11 @@ export interface AgentSettings {
   instruct_model_id: string | null;
   coder_model_id: string | null;
   rag_enabled: boolean;
+  /** Personal theme overrides — merged on top of system branding at
+   *  render time. Same shape as BrandingRead.theme_tokens. */
+  theme_overrides: ThemeTokens | null;
+  /** Built-in sidebar nav keys the user has hidden for themselves. */
+  hidden_nav_items: string[] | null;
 }
 
 export interface AgentSettingsUpdate {
@@ -607,6 +774,8 @@ export interface AgentSettingsUpdate {
   instruct_model_id?: string | null;
   coder_model_id?: string | null;
   rag_enabled?: boolean;
+  theme_overrides?: ThemeTokens | null;
+  hidden_nav_items?: string[] | null | undefined;
 }
 
 // ----------------------------------------------------------------- Scenarios

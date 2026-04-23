@@ -1,5 +1,6 @@
 import {
   ApartmentOutlined,
+  AppstoreAddOutlined,
   AppstoreOutlined,
   BellOutlined,
   BookOutlined,
@@ -226,6 +227,41 @@ export function Dictionaries() {
       ),
     },
     {
+      key: "app-categories",
+      label: "Категории приложений",
+      icon: <AppstoreAddOutlined />,
+      origin: "system",
+      content: (
+        <RefDictTab
+          kind="app-categories"
+          tableKey="ref.app-categories"
+          createLabel="Создать категорию"
+          allowDeleteSystem
+          fields={[
+            { name: "icon", label: "Иконка", type: "emoji" },
+            { name: "sort_order", label: "Порядок", type: "number" },
+          ]}
+          extraColumns={[
+            {
+              key: "icon",
+              title: "Иконка",
+              dataIndex: "icon",
+              width: 80,
+              render: (v: unknown) => (typeof v === "string" ? v : ""),
+            },
+            {
+              key: "sort_order",
+              title: "Порядок",
+              dataIndex: "sort_order",
+              width: 100,
+              sorter: (a: { sort_order?: number }, b: { sort_order?: number }) =>
+                (a.sort_order ?? 0) - (b.sort_order ?? 0),
+            },
+          ]}
+        />
+      ),
+    },
+    {
       key: "custom",
       label: ws ? `Справочники «${ws.name}»` : "Справочники пространства",
       icon: <BookOutlined />,
@@ -254,7 +290,12 @@ export function Dictionaries() {
         />
       </div>
 
+      {/* Vertical tabs — there are too many to scan horizontally.
+          ``tabPosition="left"`` puts them as a sidebar inside the page
+          so the user can pick one without scrolling. */}
       <Tabs
+        tabPosition="left"
+        style={{ minHeight: 500 }}
         activeKey={activeTab}
         onChange={(key) => setSearchParams({ tab: key })}
         items={visibleTabs.map((t) => ({

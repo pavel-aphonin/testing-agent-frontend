@@ -8,6 +8,8 @@ RUN npm install --no-audit --no-fund --loglevel=error
 
 COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
+# Static assets Vite ships verbatim to the dist root (favicon, robots.txt, etc.)
+COPY public ./public
 
 # Inject the API base URL at build time so the bundle knows where to talk
 ARG VITE_API_BASE_URL=http://localhost:8000

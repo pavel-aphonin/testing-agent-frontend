@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SmileOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
@@ -6,9 +6,11 @@ import {
   Form,
   Input,
   Popconfirm,
+  Popover,
   Select,
   Space,
   Switch,
+  Tabs,
   Tag,
   Tooltip,
 } from "antd";
@@ -22,11 +24,97 @@ import { notify } from "@/utils/notify";
 interface FieldDef {
   name: string;
   label: string;
-  type?: "text" | "select" | "switch" | "number";
+  type?: "text" | "select" | "switch" | "number" | "emoji";
   options?: { value: string; label: string }[];
   required?: boolean;
   width?: number;
   defaultValue?: unknown;
+}
+
+/**
+ * Compact emoji picker — a Popover with a few curated categories.
+ * We bake the list ourselves instead of pulling in `emoji-mart` (~180kB
+ * with data) because the use case is "pick an icon for a dictionary
+ * entry", not a chat reaction panel. 150ish glyphs covers basically
+ * everything we ever put on a category tile.
+ */
+const EMOJI_GROUPS: Record<string, string[]> = {
+  "Интерфейс": [
+    "🧩","🔌","⚡","📊","🛠️","🧰","🔧","⚙️","🎛️","🗂️","📁","📦","🧱","🪜","🎯","🧭",
+    "🧪","🧬","🔬","🔭","📐","📏","📎","✂️","🖇️","🔗","🔑","🔒","🔓","🧿","🪞","🧲",
+  ],
+  "Данные": [
+    "📈","📉","📊","🗒️","📋","📝","📄","📃","🧾","📑","📒","📕","📗","📘","📙","📚",
+    "🗃️","🗄️","🗓️","📅","📆","🔢","🔣","🔠","🔡","🔤","⏱️","⏳","🕰️","⏰","📡","🛰️",
+  ],
+  "Люди и связь": [
+    "🤖","🧠","👤","👥","🫂","🗣️","💬","💭","📣","📢","🔔","🔕","✉️","📧","📨","📬",
+    "📮","📞","📱","💻","🖥️","⌨️","🖱️","🖨️","💾","💿","📀","🎥","🎬","📷","📸","🎙️",
+  ],
+  "Знаки": [
+    "✅","✔️","❎","❌","⭐","🌟","💎","🏆","🥇","🎖️","🏅","🎗️","🎫","🎟️","🎁","🎉",
+    "🚀","🛸","🌐","🗺️","🧳","🧯","🚨","🛡️","⚔️","🔥","💡","🔋","🔌","🧿","♾️","✨",
+  ],
+};
+
+function EmojiPicker({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const pick = (e: string) => { onChange?.(e); setOpen(false); };
+  const items = Object.entries(EMOJI_GROUPS).map(([title, list]) => ({
+    key: title,
+    label: title,
+    children: (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(8, 32px)",
+          gap: 4,
+          maxHeight: 200,
+          overflowY: "auto",
+          padding: 4,
+        }}
+      >
+        {list.map((e) => (
+          <button
+            key={e}
+            type="button"
+            onClick={() => pick(e)}
+            style={{
+              fontSize: 20, lineHeight: "28px", width: 32, height: 32,
+              border: "0", background: "transparent", cursor: "pointer",
+              borderRadius: 6, padding: 0,
+            }}
+            onMouseEnter={(ev) => (ev.currentTarget.style.background = "#f5f5f5")}
+            onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+    ),
+  }));
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement="bottomLeft"
+      content={<Tabs size="small" items={items} style={{ width: 310 }} />}
+    >
+      <Input
+        value={value ?? ""}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder="Нажмите, чтобы выбрать"
+        suffix={
+          <Tooltip title="Выбрать из списка">
+            <SmileOutlined style={{ color: "#8c8c8c", cursor: "pointer" }} />
+          </Tooltip>
+        }
+        readOnly
+        style={{ cursor: "pointer" }}
+      />
+    </Popover>
+  );
 }
 
 interface Props {
@@ -40,6 +128,13 @@ interface Props {
   extraColumns?: DataTableColumn<RefRow>[];
   /** Title for the create button. */
   createLabel?: string;
+  /**
+   * Allow deleting ``is_system`` rows from this tab. The backend still
+   * gets the final say and typically returns 409 if the row is referenced
+   * — we surface that message to the user. App categories opt in so
+   * unused system seeds can be cleaned up.
+   */
+  allowDeleteSystem?: boolean;
 }
 
 /**
@@ -47,7 +142,7 @@ interface Props {
  * OS versions, device types, action types, test data types). Each
  * uses the same /api/reference/{kind} contract.
  */
-export function RefDictTab({ kind, tableKey, fields, extraColumns = [], createLabel = "Создать" }: Props) {
+export function RefDictTab({ kind, tableKey, fields, extraColumns = [], createLabel = "Создать", allowDeleteSystem = false }: Props) {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const myPerms = useMemo(() => new Set(me?.permissions ?? []), [me?.permissions]);
@@ -137,7 +232,7 @@ export function RefDictTab({ kind, tableKey, fields, extraColumns = [], createLa
     },
     ...extraColumns,
     {
-      title: "Активен",
+      title: "Активна",
       dataIndex: "is_active",
       key: "is_active",
       width: 100,
@@ -160,7 +255,7 @@ export function RefDictTab({ kind, tableKey, fields, extraColumns = [], createLa
               <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(rec)} />
             </Tooltip>
           )}
-          {myPerms.has("dictionaries.delete") && !rec.is_system && (
+          {myPerms.has("dictionaries.delete") && (allowDeleteSystem || !rec.is_system) && (
             <Popconfirm
               title="Удалить?"
               onConfirm={() => deleteM.mutate(rec.id)}
@@ -239,12 +334,14 @@ export function RefDictTab({ kind, tableKey, fields, extraColumns = [], createLa
                     <Switch />
                   ) : f.type === "number" ? (
                     <Input type="number" />
+                  ) : f.type === "emoji" ? (
+                    <EmojiPicker />
                   ) : (
                     <Input />
                   )}
                 </Form.Item>
               ))}
-              <Form.Item name="is_active" label="Активен" valuePropName="checked">
+              <Form.Item name="is_active" label="Активна" valuePropName="checked">
                 <Switch />
               </Form.Item>
             </Form>

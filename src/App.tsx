@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, theme as antdTheme } from "antd";
 import enUS from "antd/locale/en_US";
 import ruRU from "antd/locale/ru_RU";
 import { useEffect } from "react";
@@ -9,7 +9,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { fetchMe } from "@/api/auth";
 import { getMySettings } from "@/api/settings";
 import { AppLayout } from "@/components/AppLayout";
+import { BrandingSync } from "@/components/BrandingSync";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { WhatsNewProvider } from "@/components/WhatsNew";
+import { composeTokens, useBranding, useUserThemeOverrides } from "@/hooks/useBranding";
+import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { AdminDevices } from "@/pages/AdminDevices";
 import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
@@ -22,7 +26,9 @@ import { AppsStore } from "@/pages/AppsStore";
 import { WorkspaceApps } from "@/pages/WorkspaceApps";
 import { WorkspaceDictionaries } from "@/pages/WorkspaceDictionaries";
 import { WorkspaceMembers } from "@/pages/WorkspaceMembers";
+import { FeedbackInbox } from "@/pages/FeedbackInbox";
 import { HelpPage } from "@/pages/Help";
+import { WhatsNewPage } from "@/pages/WhatsNewPage";
 import { Login } from "@/pages/Login";
 import { Profile } from "@/pages/Profile";
 import { RunProgress } from "@/pages/RunProgress";
@@ -72,24 +78,49 @@ export default function App() {
   const antdLocale =
     ANTD_LOCALES[i18n.language as keyof typeof ANTD_LOCALES] ?? enUS;
 
+  const resolvedTheme = useResolvedTheme();
+  const branding = useBranding();
+  const userOverrides = useUserThemeOverrides();
+  const isDark = resolvedTheme === "dark";
+
+  // Final token set = defaults → system branding → personal overrides.
+  const tokens = composeTokens(resolvedTheme, branding.systemTokens, userOverrides);
+
+  // Sync body background + sidebar CSS variables so non-AntD elements
+  // (sidebar, layout backgrounds, inline cards) pick up the right
+  // theme colors automatically. CSS vars are read by AppLayout.
+  useEffect(() => {
+    const bg = tokens.antd.colorBgLayout as string;
+    document.body.style.background = bg;
+    document.body.dataset.theme = resolvedTheme;
+    document.documentElement.style.setProperty("--ta-sidebar-bg", tokens.sidebar.bg);
+    document.documentElement.style.setProperty("--ta-sidebar-hover", tokens.sidebar.itemHoverBg);
+    document.documentElement.style.setProperty("--ta-sidebar-active", tokens.sidebar.itemSelectedBg);
+  }, [resolvedTheme, tokens.antd.colorBgLayout, tokens.sidebar.bg, tokens.sidebar.itemHoverBg, tokens.sidebar.itemSelectedBg]);
+
   return (
     <ConfigProvider
       locale={antdLocale}
       theme={{
-        token: {
-          colorPrimary: "#EE3424",
-          colorError: "#EE3424",
-          borderRadius: 6,
-        },
+        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: tokens.antd,
         components: {
           Menu: {
-            darkItemBg: "#0B0B0B",
-            darkSubMenuItemBg: "#0B0B0B",
-            darkItemSelectedBg: "#EE3424",
+            darkItemBg: tokens.sidebar.bg,
+            darkSubMenuItemBg: tokens.sidebar.bg,
+            darkItemHoverBg: tokens.sidebar.itemHoverBg,
+            darkItemSelectedBg: tokens.sidebar.itemSelectedBg,
           },
         },
       }}
     >
+      {/* Mounted once at the app root so <title> and favicon sync with
+          branding on every route, including /login. */}
+      <BrandingSync />
+      {/* WhatsNewProvider owns the "Что нового" modal state. Mounted
+          above <Routes> so the sidebar plaque, footer and any future
+          callsite can call useWhatsNew().open() from anywhere. */}
+      <WhatsNewProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
 
@@ -106,6 +137,16 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/help" element={<HelpPage />} />
+          <Route path="/help/:slug" element={<HelpPage />} />
+          <Route path="/whatsnew/:version" element={<WhatsNewPage />} />
+          <Route
+            path="/admin/feedback"
+            element={
+              <ProtectedRoute requirePermission="users.view">
+                <FeedbackInbox />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/test-data"
             element={
@@ -185,6 +226,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/runs" replace />} />
       </Routes>
+      </WhatsNewProvider>
     </ConfigProvider>
   );
 }

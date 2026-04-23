@@ -18,6 +18,7 @@ import {
   uploadBundle,
 } from "@/api/apps";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
+import { useAuthStore } from "@/store/auth";
 import type { AppPackageRead } from "@/types";
 import { notify } from "@/utils/notify";
 
@@ -31,6 +32,9 @@ const STATUS_META: Record<string, { color: string; icon: React.ReactNode; label:
 /** Tab rendered inside Profile: "Мои приложения". */
 export function ProfileMyApps() {
   const qc = useQueryClient();
+  const me = useAuthStore((s) => s.user);
+  // Same gate as AppsStore — admins get it via the admin role.
+  const canUpload = Boolean(me && (me.permissions ?? []).includes("apps.upload"));
 
   const mineQ = useQuery({
     queryKey: ["apps-mine"],
@@ -160,18 +164,20 @@ export function ProfileMyApps() {
         <Typography.Title level={5} style={{ margin: 0 }}>
           Загруженные мной приложения
         </Typography.Title>
-        <Upload
-          accept=".zip"
-          showUploadList={false}
-          beforeUpload={(file) => {
-            uploadM.mutate(file);
-            return false;
-          }}
-        >
-          <Button type="primary" icon={<CloudUploadOutlined />} loading={uploadM.isPending}>
-            Загрузить новое приложение
-          </Button>
-        </Upload>
+        {canUpload && (
+          <Upload
+            accept=".zip"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              uploadM.mutate(file);
+              return false;
+            }}
+          >
+            <Button type="primary" icon={<CloudUploadOutlined />} loading={uploadM.isPending}>
+              Загрузить новое приложение
+            </Button>
+          </Upload>
+        )}
       </Space>
 
       <Alert

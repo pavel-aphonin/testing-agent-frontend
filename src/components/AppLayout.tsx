@@ -4,6 +4,7 @@ import {
   AppstoreOutlined,
   BookOutlined,
   DatabaseOutlined,
+  DesktopOutlined,
   ExperimentOutlined,
   FileTextOutlined,
   LogoutOutlined,
@@ -18,7 +19,7 @@ import {
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Avatar, Layout, Menu, Space, Tooltip, Typography } from "antd";
+import { Avatar, Dropdown, Layout, Menu, Space, Tooltip, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,11 +29,17 @@ import * as AntIcons from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 
 import { listInstallations } from "@/api/apps";
+import { avatarAssetUrl } from "@/api/profile";
+import { getMySettings } from "@/api/settings";
 import { AppRunner } from "@/components/AppRunner";
 import { AppSlots } from "@/components/AppSlots";
 import { AssistantDrawer } from "@/components/AssistantDrawer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { MarkovLogo } from "@/components/MarkovLogo";
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { WhatsNewPlaque, useWhatsNew } from "@/components/WhatsNew";
+import { useBranding } from "@/hooks/useBranding";
+import { useThemeStore, type ThemeMode } from "@/store/theme";
 import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuthStore } from "@/store/auth";
@@ -40,8 +47,8 @@ import { useWorkspaceStore } from "@/store/workspace";
 
 const { Header, Sider, Content } = Layout;
 
-const APP_VERSION = "0.4.0";
-const APP_BUILD = "2026.04.20";
+const APP_VERSION = "0.5.0";
+const APP_BUILD = "2026.04.23";
 
 const MIN_SIDER_WIDTH = 200;
 const MAX_SIDER_WIDTH = 480;
@@ -54,6 +61,18 @@ export function AppLayout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const branding = useBranding();
+  const resolvedTheme = useThemeStore((s) => s.resolved);
+  const isDark = resolvedTheme === "dark";
+
+  // Colors that the layout hard-codes (Header bg, borders, body surface).
+  // Antd's ConfigProvider covers components but these are plain divs.
+  const surface = isDark ? "#1f1f1f" : "#fff";
+  const pageBg = isDark ? "#141414" : "#F5F5F5";
+  const borderLine = isDark ? "#303030" : "#f0f0f0";
+
+  // Title + favicon sync now lives in <BrandingSync /> at the App root,
+  // so it also runs on /login where this layout isn't mounted.
 
   // Persisted UI state
   const [collapsed, setCollapsed] = useState<boolean>(() =>
@@ -105,6 +124,15 @@ export function AppLayout() {
     queryFn: () => (currentWs ? listInstallations(currentWs.id) : Promise.resolve([])),
     enabled: Boolean(currentWs),
   });
+  // Personal agent settings — powers the hidden_nav_items filter below.
+  // Same query key as Profile so save+navigate updates the sidebar
+  // without a hard refresh.
+  const mySettingsQ = useQuery({
+    queryKey: ["my-settings"],
+    queryFn: getMySettings,
+    staleTime: 60_000,
+  });
+  const mySettings = mySettingsQ.data;
   const hasPerm = (p: string) => perms.has(p);
 
   // ── Resize handle ───────────────────────────────────────────────────────
@@ -179,8 +207,13 @@ export function AppLayout() {
   // Sidebar slots from installed apps: appear below native workspace items.
   // Using a key prefix "app:" so our click handler can distinguish them
   // from regular nav items.
+  //
+  // Per-user pref `hidden_from_sidebar` lets people declutter their own
+  // menu without affecting other workspace members. The pref is stored
+  // per (user, installation) so it survives version updates.
   for (const inst of installedQ.data ?? []) {
     if (!inst.is_enabled) continue;
+    if (inst.user_prefs?.hidden_from_sidebar) continue;
     const slots = inst.version?.manifest?.ui_slots ?? [];
     for (const s of slots) {
       if (s.slot !== "sidebar") continue;
@@ -243,6 +276,17 @@ export function AppLayout() {
     });
   }
 
+  // Admin inbox for help-page feedback tickets. Gated on the same
+  // permission as the user admin page since only admins should be
+  // reading these submissions.
+  if (hasPerm("users.view")) {
+    sysItems.push({
+      key: "/admin/feedback",
+      icon: <AntIcons.MessageOutlined />,
+      label: <Link to="/admin/feedback">Обращения</Link>,
+    });
+  }
+
   // "Справка" lives in the System group (everyone has access but
   // conceptually it belongs with system-level items). "Профиль" is not
   // a menu item — the email/role block at the bottom links to /profile.
@@ -252,38 +296,63 @@ export function AppLayout() {
     label: <Link to="/help">Справка</Link>,
   });
 
+  // Per-user hidden nav items from Profile → Навигация. We filter
+  // the built-in menu lists (wsItems / sysItems) before rendering.
+  // App slots under "app:" keys have their own per-installation
+  // ``hidden_from_sidebar`` pref and are handled elsewhere.
+  const hiddenNav = new Set<string>(mySettings?.hidden_nav_items ?? []);
+  const visibleWsItems = wsItems.filter(
+    (i) => !hiddenNav.has(String(i.key)),
+  );
+  const visibleSysItems = sysItems.filter(
+    (i) => !hiddenNav.has(String(i.key)),
+  );
+
   // ── Build menu structure ────────────────────────────────────────────────
   // When collapsed → flat list (labels hidden anyway, groups would just
   // waste space). When expanded → use SubMenu so groups can collapse.
   const menuItems: MenuProps["items"] = [];
-  if (wsItems.length > 0) {
+  if (visibleWsItems.length > 0) {
     menuItems.push({
       key: "ws",
       label: "Рабочее пространство",
       icon: <AppstoreOutlined />,
-      children: wsItems,
+      children: visibleWsItems,
     });
   }
-  if (sysItems.length > 0) {
+  if (visibleSysItems.length > 0) {
     menuItems.push({
       key: "sys",
       label: "Система",
       icon: <SettingOutlined />,
-      children: sysItems,
+      children: visibleSysItems,
     });
   }
 
   const collapsedItems: MenuProps["items"] = [
-    ...wsItems,
+    ...visibleWsItems,
     { type: "divider" as const },
-    ...sysItems,
+    ...visibleSysItems,
   ];
 
-  const allKeys = [...wsItems, ...sysItems, { key: "/profile" }].map((i) => i.key);
+  const allKeys = [...visibleWsItems, ...visibleSysItems, { key: "/profile" }].map((i) => i.key);
   const selectedKey =
     allKeys
       .filter((k) => location.pathname.startsWith(k))
       .sort((a, b) => b.length - a.length)[0] ?? "/runs";
+
+  // Auto-open the group that contains the active route, so someone
+  // navigating directly to ``/settings`` sees the "Система" group open
+  // with "Настройки" highlighted instead of a collapsed group.
+  useEffect(() => {
+    const inWs = wsItems.some((i) => i.key === selectedKey);
+    const inSys = sysItems.some((i) => i.key === selectedKey);
+    const want = inWs ? "ws" : inSys ? "sys" : null;
+    if (want && !openGroups.includes(want)) {
+      setOpenGroups((prev) => [...prev, want]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
 
   const handleLogout = () => {
     logout();
@@ -322,7 +391,7 @@ export function AppLayout() {
           insetInlineStart: 0,
           top: 0,
           bottom: 0,
-          background: "#0B0B0B",
+          background: "var(--ta-sidebar-bg, #0B0B0B)",
           display: "flex",
           flexDirection: "column",
         }}
@@ -353,10 +422,28 @@ export function AppLayout() {
               display: "flex",
               flexDirection: collapsed ? "column" : "row",
               alignItems: "center",
-              justifyContent: collapsed ? "center" : "space-between",
-              gap: collapsed ? 8 : 8,
+              // Expanded: logo + name grouped on the left (flex-start) —
+              // they read as a single "brand" unit, Linear/Notion style.
+              // Collapsed: center the logo in the narrow column.
+              justifyContent: collapsed ? "center" : "flex-start",
+              gap: 10,
             }}
           >
+            <MarkovLogo
+              size={32}
+              logoUrl={branding.logoUrl}
+              logoBackUrl={branding.logoBackUrl}
+            />
+            {!collapsed && (
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {branding.productName}
+              </span>
+            )}
+          </div>
+          {/* Legacy inline logo (no longer rendered) kept here only to keep
+              the diff against previous layout readable. Remove after QA. */}
+          {false && (
+          <div style={{ display: "none" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
               <span
                 style={{
@@ -423,16 +510,24 @@ export function AppLayout() {
               )}
             </span>
           </div>
+          )}
 
           {/* Navigation */}
           <div style={{ flex: 1, overflow: "auto", scrollbarWidth: "thin" }}>
             <Menu
               theme="dark"
               mode="inline"
+              // When collapsed, Ant Menu switches to floating submenus and
+              // tends to fire ``onOpenChange`` with a transient value that
+              // overwrites our persisted state. We freeze the controlled
+              // value to what the user had open last time in expanded mode,
+              // and ignore change events while collapsed.
               selectedKeys={[selectedKey]}
               items={collapsed ? collapsedItems : menuItems}
-              openKeys={collapsed ? undefined : openGroups}
-              onOpenChange={(keys) => setOpenGroups(keys as string[])}
+              openKeys={collapsed ? [] : openGroups}
+              onOpenChange={(keys) => {
+                if (!collapsed) setOpenGroups(keys as string[]);
+              }}
               style={{ borderRight: 0 }}
               onClick={({ key }) => {
                 if (typeof key === "string" && key.startsWith("app:")) {
@@ -442,6 +537,13 @@ export function AppLayout() {
                 }
               }}
             />
+          </div>
+
+          {/* «Что нового?» plaque — product changelog with an unread
+              badge. Pinned right above the collapse toggle so it's
+              always reachable. */}
+          <div style={{ marginTop: 8 }}>
+            <WhatsNewPlaque collapsed={collapsed} />
           </div>
 
           {/* Collapse toggle — sits above user info so it doesn't fight
@@ -492,7 +594,7 @@ export function AppLayout() {
                   style={{ display: "flex", justifyContent: "center", cursor: "pointer" }}
                   onClick={() => navigate("/profile")}
                 >
-                  <Avatar size="small" icon={<UserOutlined />} style={{ background: "#EE3424" }} />
+                  <UserAvatar size="small" />
                 </div>
               </Tooltip>
             ) : (
@@ -513,7 +615,7 @@ export function AppLayout() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#1a1a1a")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <Avatar size="small" icon={<UserOutlined />} style={{ background: "#EE3424", flexShrink: 0 }} />
+                    <UserAvatar size="small" />
                     <div style={{ overflow: "hidden", lineHeight: 1.3 }}>
                       <Typography.Text style={{ color: "#fff", fontSize: 12, display: "block" }} ellipsis>
                         {user.email}
@@ -524,9 +626,9 @@ export function AppLayout() {
                     </div>
                   </div>
                 </Tooltip>
-                <div style={{ color: "#555", fontSize: 10, marginTop: 12, paddingTop: 8, borderTop: "1px solid #1a1a1a" }}>
-                  v{APP_VERSION} · {APP_BUILD}
-                </div>
+                {/* Clickable version line — opens the «Что нового» modal
+                    so users have a second entry point from the footer. */}
+                <VersionFooter />
               </>
             )}
           </div>
@@ -538,12 +640,12 @@ export function AppLayout() {
       <Layout style={{ minWidth: 0, marginLeft: 0 }}>
         <Header
           style={{
-            background: "#fff",
+            background: surface,
             padding: "0 24px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            borderBottom: "1px solid #f0f0f0",
+            borderBottom: `1px solid ${borderLine}`,
             height: 48,
             lineHeight: "48px",
           }}
@@ -554,6 +656,7 @@ export function AppLayout() {
             <AppSlots slot="top_bar" />
             <WorkerStatusBadge />
             <NotificationsBell />
+            <ThemeSwitcher />
             <Tooltip title="Открыть ассистента" placement="bottom">
               <a
                 onClick={() => setAssistantOpen(true)}
@@ -599,22 +702,191 @@ export function AppLayout() {
           onClose={() => setSidebarAppOpen(null)}
         />
 
-        <Content style={{ margin: 24, minWidth: 0, overflow: "auto" }}>
-          <div
-            style={{
-              padding: 24,
-              minHeight: 360,
-              background: "#fff",
-              borderRadius: 8,
-              minWidth: 0,
-            }}
-          >
+        {/* Some pages use the full viewport width — store, app detail,
+            Settings (esp. the API tab with embedded Swagger), and Help
+            portal. Everything else keeps the classic centered white card. */}
+        {(() => {
+          const path = location.pathname;
+          const wide =
+            path === "/apps/store" ||
+            path.startsWith("/apps/") ||
+            path === "/settings" ||
+            path.startsWith("/help");
+          // Page surface colors follow the resolved theme. Wide pages
+          // sit on the page-bg directly; narrow pages get a card-like
+          // surface against the page background.
+          const wideBg = pageBg;
+          const cardBg = surface;
+          return (
+            <Content
+              style={{
+                margin: wide ? 0 : 24,
+                padding: wide ? "24px 32px" : 0,
+                minWidth: 0,
+                overflow: "auto",
+                background: wide ? wideBg : "transparent",
+              }}
+            >
+              <div
+                style={{
+                  padding: wide ? 0 : 24,
+                  minHeight: 360,
+                  background: wide ? "transparent" : cardBg,
+                  borderRadius: wide ? 0 : 8,
+                  minWidth: 0,
+                }}
+              >
             <ErrorBoundary>
               <Outlet />
             </ErrorBoundary>
-          </div>
-        </Content>
+              </div>
+            </Content>
+          );
+        })()}
       </Layout>
     </Layout>
+  );
+}
+
+
+/**
+ * Theme switcher for the top bar. Matches the visual weight of its
+ * neighbours (Ассистент / Выйти) — icon + short label, same height
+ * and text color. Dropdown with three options: Light, Dark, System.
+ */
+function ThemeSwitcher() {
+  const mode = useThemeStore((s) => s.mode);
+  const resolved = useThemeStore((s) => s.resolved);
+  const setMode = useThemeStore((s) => s.setMode);
+
+  const glyphFor = (m: ThemeMode | "light" | "dark") => {
+    if (m === "light") return <SunGlyph />;
+    if (m === "dark") return <MoonGlyph />;
+    return <DesktopOutlined />;
+  };
+  const triggerGlyph = mode === "system" ? glyphFor("system") : glyphFor(resolved);
+  const triggerLabel =
+    mode === "system"
+      ? "Тема: авто"
+      : mode === "dark"
+      ? "Тёмная"
+      : "Светлая";
+
+  return (
+    <Dropdown
+      trigger={["click"]}
+      menu={{
+        selectedKeys: [mode],
+        onClick: ({ key }) => setMode(key as ThemeMode),
+        items: [
+          { key: "light", icon: glyphFor("light"), label: "Светлая" },
+          { key: "dark", icon: glyphFor("dark"), label: "Тёмная" },
+          { key: "system", icon: glyphFor("system"), label: "Как в системе" },
+        ],
+      }}
+    >
+      <a
+        style={{
+          color: "#999",
+          fontSize: 13,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: "pointer",
+          lineHeight: "48px",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "#EE3424")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "#999")}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", fontSize: 14 }}>
+          {triggerGlyph}
+        </span>
+        {triggerLabel}
+      </a>
+    </Dropdown>
+  );
+}
+
+/** Inline sun — Ant Design's ``SunOutlined`` isn't present in all
+ *  versions we support, so we ship our own for safety. */
+function SunGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden>
+      <circle cx="8" cy="8" r="3.2" />
+      <g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+        <line x1="8" y1="1.5" x2="8" y2="3.2" />
+        <line x1="8" y1="12.8" x2="8" y2="14.5" />
+        <line x1="1.5" y1="8" x2="3.2" y2="8" />
+        <line x1="12.8" y1="8" x2="14.5" y2="8" />
+        <line x1="3.3" y1="3.3" x2="4.6" y2="4.6" />
+        <line x1="11.4" y1="11.4" x2="12.7" y2="12.7" />
+        <line x1="12.7" y1="3.3" x2="11.4" y2="4.6" />
+        <line x1="4.6" y1="11.4" x2="3.3" y2="12.7" />
+      </g>
+    </svg>
+  );
+}
+
+/** Simple moon glyph — Ant Design doesn't ship a moon icon in the core
+ *  set. Inline SVG keeps us dependency-free. */
+function MoonGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden>
+      <path d="M11 13.5a7.5 7.5 0 0 1-7.4-8.9 6 6 0 1 0 7.83 7.83c-.14.04-.29.07-.43.07z"/>
+    </svg>
+  );
+}
+
+
+/**
+ * Sidebar avatar — shows the admin-uploaded image if there is one,
+ * otherwise the first letter of the email on a brand-red circle.
+ * Single source of truth so both collapsed and expanded sidebar modes
+ * stay in sync.
+ */
+function UserAvatar({ size }: { size: "small" | number }) {
+  const user = useAuthStore((s) => s.user);
+  const url = avatarAssetUrl(user?.avatar_path);
+  const initial = (user?.email?.[0] ?? "M").toUpperCase();
+  return (
+    <Avatar
+      size={size}
+      src={url ?? undefined}
+      icon={!url && <UserOutlined />}
+      style={{
+        background: "#EE3424",
+        color: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      {!url && initial}
+    </Avatar>
+  );
+}
+
+
+/** Footer version line. Reads "Версия X от DD.MM.YYYY", clickable —
+ *  click opens the «Что нового» modal. */
+function VersionFooter() {
+  const { open } = useWhatsNew();
+  // 2026.04.20 → 20.04.2026 (human-readable, matches the rest of the UI).
+  const ruDate = APP_BUILD.split(".").reverse().join(".");
+  return (
+    <div
+      onClick={open}
+      style={{
+        color: "#555",
+        fontSize: 10,
+        marginTop: 12,
+        paddingTop: 8,
+        borderTop: "1px solid #1a1a1a",
+        cursor: "pointer",
+        transition: "color .15s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = "#ccc")}
+      onMouseLeave={(e) => (e.currentTarget.style.color = "#555")}
+    >
+      Версия {APP_VERSION} от {ruDate}
+    </div>
   );
 }

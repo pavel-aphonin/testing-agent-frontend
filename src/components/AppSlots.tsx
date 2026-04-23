@@ -37,8 +37,12 @@ export function AppSlots({ slot, fixed = false, contextData }: Props) {
     enabled: Boolean(ws),
   });
 
+  // Per-user visibility: one day a user might want to hide an app from
+  // the top bar or corner button but keep the sidebar entry. We check a
+  // dedicated `hidden_from_<slot>` key so it's opt-in per slot region.
   const entries = (installedQ.data ?? [])
     .filter((i) => i.is_enabled)
+    .filter((i) => !i.user_prefs?.[`hidden_from_${slot}`])
     .flatMap((i) => {
       const slots = i.version?.manifest?.ui_slots ?? [];
       return slots

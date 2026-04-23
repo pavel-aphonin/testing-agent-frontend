@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { fetchMe, login } from "@/api/auth";
+import { MarkovLogo } from "@/components/MarkovLogo";
+import { useBranding } from "@/hooks/useBranding";
 import { useAuthStore } from "@/store/auth";
 
 interface LoginForm {
@@ -23,6 +25,7 @@ export function Login() {
   const setSession = useAuthStore((s) => s.setSession);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const branding = useBranding();
 
   const onFinish = async (values: LoginForm) => {
     setError(null);
@@ -53,12 +56,25 @@ export function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#F5F5F5",
+        // Transparent — App.tsx paints document.body to match the theme,
+        // so we don't need to second-guess the color here.
+        background: "transparent",
       }}
     >
       <Card style={{ width: 400, borderTop: "3px solid #EE3424" }}>
+        {/* Animated logo — same flip as the sidebar, bigger since there's
+            room. Swaps to the admin-uploaded mark when system branding
+            is customized. */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <MarkovLogo
+            size={64}
+            durationSec={6}
+            logoUrl={branding.logoUrl}
+            logoBackUrl={branding.logoBackUrl}
+          />
+        </div>
         <Typography.Title level={3} style={{ textAlign: "center", marginBottom: 4 }}>
-          {t("auth.loginTitle")}
+          Вход в «{branding.productName}»
         </Typography.Title>
         <Typography.Paragraph
           type="secondary"

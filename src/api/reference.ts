@@ -5,12 +5,14 @@ export interface RefRow {
   code: string;
   name: string;
   is_active: boolean;
-  // Optional category fields
+  // Optional fields — only some ref tables have them.
   platform_code?: string;
   platform_scope?: string;
   description?: string | null;
   is_system?: boolean;
   sort_order?: number;
+  /** App-category rows carry an emoji/glyph shown as chip prefix. */
+  icon?: string | null;
 }
 
 export async function listRef(kind: string, params: Record<string, string> = {}): Promise<RefRow[]> {

@@ -3,7 +3,9 @@ import {
   CloudDownloadOutlined,
   DeleteOutlined,
   DisconnectOutlined,
+  EyeInvisibleOutlined,
   LinkOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,7 +15,10 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Col,
+  Collapse,
+  Divider,
   Drawer,
   Empty,
   Form,
@@ -33,13 +38,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
+  listAppsHistory,
   listInstallations,
   listVersions,
   uninstallApp,
   updateInstallation,
+  updateMyInstallationPrefs,
 } from "@/api/apps";
 import { useWorkspaceStore } from "@/store/workspace";
-import type { AppInstallationRead, AppManifestSetting } from "@/types";
+import type {
+  AppAuditAction,
+  AppInstallationAuditRead,
+  AppInstallationRead,
+  AppManifestSetting,
+} from "@/types";
 import { notify } from "@/utils/notify";
 
 export function WorkspaceApps() {
@@ -54,11 +66,20 @@ export function WorkspaceApps() {
     enabled: Boolean(ws),
   });
 
+  // Audit log powering the "История" tab. Cheap to always fetch — the
+  // list is already capped server-side to 200 rows.
+  const historyQ = useQuery({
+    queryKey: ["ws-apps-history", ws?.id ?? "none"],
+    queryFn: () => (ws ? listAppsHistory(ws.id) : Promise.resolve([])),
+    enabled: Boolean(ws),
+  });
+
   const uninstallM = useMutation({
     mutationFn: (instId: string) => (ws ? uninstallApp(ws.id, instId) : Promise.reject()),
     onSuccess: () => {
       notify.success("Приложение удалено");
       qc.invalidateQueries({ queryKey: ["ws-apps"] });
+      qc.invalidateQueries({ queryKey: ["ws-apps-history"] });
     },
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
@@ -69,6 +90,20 @@ export function WorkspaceApps() {
     onSuccess: () => {
       notify.success("Сохранено");
       qc.invalidateQueries({ queryKey: ["ws-apps"] });
+      qc.invalidateQueries({ queryKey: ["ws-apps-history"] });
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
+
+  // Per-user display prefs (hide from sidebar / top bar). Kept separate
+  // from the manifest-driven settings so toggling visibility doesn't
+  // wipe unsaved settings edits.
+  const prefsM = useMutation({
+    mutationFn: ({ instId, prefs }: { instId: string; prefs: Record<string, unknown> }) =>
+      ws ? updateMyInstallationPrefs(ws.id, instId, prefs) : Promise.reject(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ws-apps"] });
+      qc.invalidateQueries({ queryKey: ["ws-apps-history"] });
     },
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
@@ -212,7 +247,7 @@ export function WorkspaceApps() {
                 </Typography.Paragraph>
                 <div style={{ fontSize: 11, color: "#999" }}>
                   v{inst.version?.version ?? "?"} · установлено{" "}
-                  {new Date(inst.installed_at).toLocaleDateString()}
+                  {new Date(inst.installed_at).toLocaleDateString("ru-RU")}
                 </div>
               </Card>
             </Col>
@@ -273,6 +308,11 @@ export function WorkspaceApps() {
               </>
             ),
           },
+          {
+            key: "history",
+            label: <span>История</span>,
+            children: <HistoryTab rows={historyQ.data ?? []} loading={historyQ.isLoading} />,
+          },
         ]}
       />
 
@@ -284,53 +324,150 @@ export function WorkspaceApps() {
         extra={
           <Button
             type="primary"
-            onClick={() =>
-              form.validateFields().then((values) => {
-                if (settingsFor) {
-                  updateM.mutate({
-                    instId: settingsFor.id,
-                    payload: { settings: values },
-                  });
-                  setSettingsFor(null);
-                }
-              })
-            }
+            onClick={() => {
+              if (!settingsFor) return;
+              // Save whatever the user has entered — we don't block on
+              // required fields here because "required" is a hint from
+              // the manifest author ("without this the app won't work"),
+              // not a hard wall. Users often need to save partial
+              // config (e.g. api_url, system_id) before the access
+              // token arrives by email. The app itself will refuse to
+              // make real calls without the missing fields.
+              const values = form.getFieldsValue();
+              updateM.mutate({
+                instId: settingsFor.id,
+                payload: { settings: values },
+              });
+              setSettingsFor(null);
+            }}
           >
             Сохранить
           </Button>
         }
       >
         {settingsFor && (
-          <Form form={form} layout="vertical">
-            {(settingsFor.version?.manifest?.settings_schema ?? []).map((f) => (
-              <SettingField key={f.code} field={f} />
-            ))}
-            {(settingsFor.version?.manifest?.settings_schema ?? []).length === 0 && (
-              <Empty description="У приложения нет настроек" />
-            )}
-          </Form>
+          <>
+            {/* Personal display prefs — stored per (user, installation).
+                Only rendered for slot types the app actually uses, so
+                you don't see a "hide from top bar" toggle on an app
+                that never puts anything there.
+
+                ``currentPrefs`` is read live from the installations
+                query (not from the drawer's snapshot) so the checkbox
+                reflects the DB after a save, not the state at the
+                moment the drawer opened. */}
+            <PersonalPrefsSection
+              inst={settingsFor}
+              currentPrefs={
+                installedQ.data?.find((i) => i.id === settingsFor.id)?.user_prefs ?? {}
+              }
+              onToggle={(prefs) =>
+                prefsM.mutate({ instId: settingsFor.id, prefs })
+              }
+            />
+            <Divider>Настройки приложения</Divider>
+            <Form form={form} layout="vertical">
+              <GroupedSettings
+                fields={settingsFor.version?.manifest?.settings_schema ?? []}
+              />
+            </Form>
+          </>
         )}
       </Drawer>
     </>
   );
 }
 
-function SettingField({ field }: { field: AppManifestSetting }) {
-  const rules = field.required ? [{ required: true, message: "Обязательно" }] : [];
-  const label = (
-    <span>
-      {field.name}
-      {field.required && <span style={{ color: "#cf1322" }}> *</span>}
-    </span>
+/**
+ * Render manifest fields grouped by ``field.group``. Ungrouped fields
+ * render at the top (always visible). Grouped fields render as a
+ * uniform ``<Collapse>`` — first group expanded by default, the rest
+ * collapsed. This is deliberately baked into the host so every
+ * bundle behaves the same way and the user's UX muscle memory carries
+ * across apps.
+ */
+function GroupedSettings({ fields }: { fields: AppManifestSetting[] }) {
+  if (fields.length === 0) {
+    return <Empty description="У приложения нет настроек" />;
+  }
+
+  // Ordered bucket map — preserves manifest ordering as the app
+  // author laid it out.
+  const buckets = new Map<string, AppManifestSetting[]>();
+  const NO_GROUP = "__no_group__";
+  for (const f of fields) {
+    const key = f.group ?? NO_GROUP;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(f);
+  }
+
+  const ungrouped = buckets.get(NO_GROUP) ?? [];
+  const groupEntries: [string, AppManifestSetting[]][] = [];
+  for (const [k, v] of buckets) {
+    if (k !== NO_GROUP) groupEntries.push([k, v]);
+  }
+
+  // Open the first named group by default — common case is "Connection"
+  // or similar, which the user usually wants to see first. Other groups
+  // stay collapsed so long settings lists stay scannable.
+  const defaultActive = groupEntries.length ? [groupEntries[0]![0]] : [];
+
+  return (
+    <>
+      {ungrouped.map((f) => <SettingField key={f.code} field={f} />)}
+      {groupEntries.length > 0 && (
+        <Collapse
+          size="small"
+          bordered={false}
+          defaultActiveKey={defaultActive}
+          style={{ background: "transparent", marginTop: ungrouped.length ? 4 : 0 }}
+          items={groupEntries.map(([title, items]) => ({
+            key: title,
+            label: (
+              <Typography.Text
+                strong
+                style={{ fontSize: 12, letterSpacing: 0.3, textTransform: "uppercase", color: "#555" }}
+              >
+                {title}
+              </Typography.Text>
+            ),
+            children: (
+              <div>
+                {items.map((f) => <SettingField key={f.code} field={f} />)}
+              </div>
+            ),
+          }))}
+        />
+      )}
+    </>
   );
-  const extra = field.description;
+}
+
+function SettingField({ field }: { field: AppManifestSetting }) {
+  // We don't enforce required-at-save-time. See the drawer save
+  // handler for the rationale. The red asterisk in ``label`` still
+  // tells the user "you need this for the app to actually work".
+  const rules: never[] = [];
+  // Label with a "?" tooltip — matches the pattern used elsewhere in
+  // the app (test data, scenarios, dictionaries). Beginner-friendly:
+  // hover to get a plain-language hint.
+  const label = (
+    <Space size={4}>
+      <span>{field.name}</span>
+      {field.required && <span style={{ color: "#cf1322" }}>*</span>}
+      {field.description && (
+        <Tooltip title={field.description}>
+          <QuestionCircleOutlined style={{ color: "#bfbfbf", cursor: "help" }} />
+        </Tooltip>
+      )}
+    </Space>
+  );
 
   if (field.type === "boolean") {
     return (
       <Form.Item
         name={field.code}
         label={label}
-        extra={extra}
         valuePropName="checked"
         initialValue={field.default ?? false}
       >
@@ -343,7 +480,6 @@ function SettingField({ field }: { field: AppManifestSetting }) {
       <Form.Item
         name={field.code}
         label={label}
-        extra={extra}
         rules={rules}
         initialValue={field.default}
       >
@@ -356,7 +492,6 @@ function SettingField({ field }: { field: AppManifestSetting }) {
       <Form.Item
         name={field.code}
         label={label}
-        extra={extra}
         rules={rules}
         initialValue={field.default}
       >
@@ -368,13 +503,20 @@ function SettingField({ field }: { field: AppManifestSetting }) {
   }
   if (field.type === "secret") {
     return (
+      <Form.Item name={field.code} label={label} rules={rules}>
+        <Input.Password autoComplete="off" />
+      </Form.Item>
+    );
+  }
+  if (field.type === "text") {
+    return (
       <Form.Item
         name={field.code}
         label={label}
-        extra={extra}
         rules={rules}
+        initialValue={field.default}
       >
-        <Input.Password autoComplete="off" />
+        <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} />
       </Form.Item>
     );
   }
@@ -382,11 +524,184 @@ function SettingField({ field }: { field: AppManifestSetting }) {
     <Form.Item
       name={field.code}
       label={label}
-      extra={extra}
       rules={rules}
       initialValue={field.default}
     >
       <Input />
     </Form.Item>
+  );
+}
+
+/**
+ * "Мои настройки отображения" — lets this user decide which of the app's
+ * UI slots show up in their chrome. Saved per-user and per-installation,
+ * so the same app can be visible for me and hidden for a colleague in
+ * the same workspace.
+ *
+ * We only render a toggle for slot types the app actually declares in
+ * its manifest. If the app has no sidebar slot, there's no point
+ * showing "hide from sidebar".
+ */
+function PersonalPrefsSection({
+  inst,
+  currentPrefs,
+  onToggle,
+}: {
+  inst: AppInstallationRead;
+  /** Live prefs from the query cache; updates after every PUT. */
+  currentPrefs: Record<string, unknown>;
+  onToggle: (prefs: Record<string, unknown>) => void;
+}) {
+  const slots = inst.version?.manifest?.ui_slots ?? [];
+  const usedSlotTypes = new Set(slots.map((s) => s.slot));
+  const prefs = currentPrefs ?? {};
+
+  // Nothing to offer if the app has no chrome slots at all.
+  const togglable: { key: string; slot: string; label: string }[] = [];
+  if (usedSlotTypes.has("sidebar")) {
+    togglable.push({
+      key: "hidden_from_sidebar",
+      slot: "sidebar",
+      label: "Скрыть из бокового меню",
+    });
+  }
+  if (usedSlotTypes.has("top_bar")) {
+    togglable.push({
+      key: "hidden_from_top_bar",
+      slot: "top_bar",
+      label: "Скрыть из верхней панели",
+    });
+  }
+  if (usedSlotTypes.has("corner")) {
+    togglable.push({
+      key: "hidden_from_corner",
+      slot: "corner",
+      label: "Скрыть плавающую кнопку",
+    });
+  }
+  if (togglable.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+        <EyeInvisibleOutlined /> Мои настройки отображения
+      </Typography.Text>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        Изменения видны только вам. Коллеги в пространстве продолжат видеть приложение.
+      </Typography.Paragraph>
+      <Space direction="vertical">
+        {togglable.map((t) => (
+          <Checkbox
+            key={t.key}
+            checked={Boolean(prefs[t.key])}
+            onChange={(e) => {
+              const next = { ...prefs, [t.key]: e.target.checked };
+              // Drop falsy keys so the pref blob stays compact over time.
+              if (!e.target.checked) delete next[t.key];
+              onToggle(next);
+            }}
+          >
+            {t.label}
+          </Checkbox>
+        ))}
+      </Space>
+    </div>
+  );
+}
+
+const AUDIT_ACTION_META: Record<AppAuditAction, { label: string; color: string }> = {
+  installed:         { label: "Установлено",     color: "green" },
+  version_changed:   { label: "Смена версии",    color: "blue" },
+  settings_changed:  { label: "Настройки",       color: "purple" },
+  enabled:           { label: "Включено",        color: "green" },
+  disabled:          { label: "Выключено",       color: "default" },
+  uninstalled:       { label: "Удалено",         color: "red" },
+};
+
+/**
+ * "История" tab — audit log of install / version / enable / uninstall
+ * events for this workspace. Shows who did what and when. Shows a
+ * concise one-liner summary per row plus a small "подробнее" expander
+ * for rows that carry details (e.g. which settings keys changed).
+ */
+function HistoryTab({
+  rows,
+  loading,
+}: {
+  rows: AppInstallationAuditRead[];
+  loading: boolean;
+}) {
+  if (loading) return null;
+  if (rows.length === 0) {
+    return (
+      <Empty
+        description="Пока никаких событий — установите первое приложение"
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+      />
+    );
+  }
+  return (
+    <div>
+      {rows.map((row) => {
+        const meta = AUDIT_ACTION_META[row.action] ?? {
+          label: row.action,
+          color: "default",
+        };
+        let summary: string;
+        switch (row.action) {
+          case "installed":
+            summary = `Установлено «${row.package_name ?? "?"}» версии v${row.to_version ?? "?"}`;
+            break;
+          case "version_changed":
+            summary = `«${row.package_name ?? "?"}»: v${row.from_version ?? "?"} → v${row.to_version ?? "?"}`;
+            break;
+          case "settings_changed": {
+            const keys = (row.details?.changed_keys as string[] | undefined) ?? [];
+            summary = keys.length
+              ? `Изменены настройки «${row.package_name ?? "?"}»: ${keys.slice(0, 4).join(", ")}${keys.length > 4 ? "…" : ""}`
+              : `Изменены настройки «${row.package_name ?? "?"}»`;
+            break;
+          }
+          case "enabled":
+            summary = `Включено «${row.package_name ?? "?"}»`;
+            break;
+          case "disabled":
+            summary = `Выключено «${row.package_name ?? "?"}»`;
+            break;
+          case "uninstalled":
+            summary = `Удалено «${row.package_name ?? "?"}»${row.from_version ? ` (v${row.from_version})` : ""}`;
+            break;
+          default:
+            summary = row.action;
+        }
+        const date = new Date(row.created_at);
+        return (
+          <div
+            key={row.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "130px 1fr auto",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 12px",
+              borderBottom: "1px solid #f0f0f0",
+            }}
+          >
+            <Tag color={meta.color} style={{ margin: 0 }}>
+              {meta.label}
+            </Tag>
+            <div>
+              <div style={{ fontSize: 13 }}>{summary}</div>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                {row.user_email ?? "—"}
+              </Typography.Text>
+            </div>
+            <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+              {date.toLocaleDateString("ru-RU")} {date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+            </Typography.Text>
+          </div>
+        );
+      })}
+    </div>
   );
 }

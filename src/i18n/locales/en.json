@@ -162,8 +162,8 @@
     }
   },
   "settings": {
-    "title": "Agent settings",
-    "subtitle": "Defaults the New Run modal pre-fills for you. They do not affect runs that have already been started.",
+    "title": "Settings",
+    "subtitle": "Agent defaults, REST API access and system branding.",
     "noModelsWarning": "No active LLM models registered yet.",
     "noModelsDescription": "Ask your administrator to register a model on the LLM Models page.",
     "defaultMode": "Default exploration mode",

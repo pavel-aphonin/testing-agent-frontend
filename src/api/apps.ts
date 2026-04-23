@@ -145,3 +145,26 @@ export async function updateInstallation(
 export async function uninstallApp(wsId: string, instId: string): Promise<void> {
   await apiClient.delete(`/api/workspaces/${wsId}/apps/${instId}`);
 }
+
+/** Audit log of install/update/uninstall events for a workspace. */
+export async function listAppsHistory(wsId: string) {
+  const res = await apiClient.get(`/api/workspaces/${wsId}/apps-history`);
+  return res.data as import("@/types").AppInstallationAuditRead[];
+}
+
+/**
+ * Replace the current user's per-installation UI prefs.
+ * Known keys: hidden_from_sidebar, hidden_from_top_bar.
+ * Unknown keys are preserved by the backend.
+ */
+export async function updateMyInstallationPrefs(
+  wsId: string,
+  instId: string,
+  prefs: Record<string, unknown>,
+): Promise<{ prefs: Record<string, unknown> }> {
+  const res = await apiClient.put(
+    `/api/workspaces/${wsId}/apps/${instId}/my-prefs`,
+    { prefs },
+  );
+  return res.data;
+}

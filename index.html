@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Default Markov favicon. The runtime ``<BrandingSync>`` component
+         swaps this to the admin-uploaded icon when system branding is
+         customized, and restores it on reset.
+         Query string busts Safari's favicon cache, which otherwise
+         sticks to whatever it cached the first time the domain was
+         visited (Cmd+Shift+R alone doesn't invalidate it). -->
+    <link rel="icon" type="image/svg+xml" href="/markov.svg?v=2" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Testing Agent</title>
+    <title>Марков</title>
   </head>
   <body>
     <div id="root"></div>
