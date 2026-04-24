@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
-import { dismissReleaseNote, getReleaseNote } from "@/api/releaseNotes";
+import { dismissReleaseNote, getReleaseNote, listReleaseNotes } from "@/api/releaseNotes";
 
 /**
  * Permalink page for a single release. Shareable (``/whatsnew/0.4.0``),
@@ -22,6 +22,15 @@ export function WhatsNewPage() {
     queryKey: ["release-note", version],
     queryFn: () => getReleaseNote(version!),
     enabled: !!version,
+  });
+
+  // Fetch the full list so we can tell whether THIS note is the newest
+  // release (green tag) or an older one (red). Cheap — the endpoint
+  // returns summaries only.
+  const listQ = useQuery({
+    queryKey: ["whats-new-list", "all"],
+    queryFn: () => listReleaseNotes(),
+    staleTime: 60_000,
   });
 
   const dismissM = useMutation({
@@ -49,6 +58,13 @@ export function WhatsNewPage() {
   }
 
   const note = q.data;
+  // Derive "is newest" from the full list (sorted desc by released_at
+  // by the API). Fallback to true while the list is still loading so
+  // we don't flash a misleading "устарела" tag for a second.
+  const latestVersion = listQ.data && listQ.data.length > 0 ? listQ.data[0].version : null;
+  const isLatest = latestVersion === null || latestVersion === note.version;
+  const tagColor = isLatest ? "green" : "red";
+
   return (
     <div style={{ maxWidth: 820, margin: "0 auto" }}>
       <Button
@@ -60,9 +76,14 @@ export function WhatsNewPage() {
         Назад
       </Button>
 
-      <Space align="center" style={{ marginBottom: 8 }}>
+      <Space align="center" style={{ marginBottom: 8 }} wrap>
         <RocketOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
-        <Tag color="red">v{note.version}</Tag>
+        <Tag color={tagColor}>v{note.version}</Tag>
+        {isLatest ? (
+          <Tag color="green" style={{ fontSize: 11 }}>актуальная</Tag>
+        ) : (
+          <Tag color="red" style={{ fontSize: 11 }}>устарела</Tag>
+        )}
         <Typography.Text type="secondary">
           {new Date(note.released_at).toLocaleDateString("ru-RU", {
             day: "2-digit", month: "long", year: "numeric",
@@ -83,19 +104,38 @@ export function WhatsNewPage() {
         {note.title}
       </Typography.Title>
 
+      {/* Theme-aware markdown styles. Using tokens here means the body
+          stays readable in both light and dark themes (the previous
+          hard-coded #f5f5f5 code background was unreadable on dark). */}
       <style>{`
-        .rn-body { line-height: 1.7; font-size: 14.5px; }
+        .rn-body { line-height: 1.7; font-size: 14.5px; color: ${token.colorText}; }
         .rn-body h1, .rn-body h2, .rn-body h3 {
           font-weight: 600; letter-spacing: -0.2px; margin: 24px 0 8px;
+          color: ${token.colorText};
         }
         .rn-body h1 { font-size: 22px; }
         .rn-body h2 { font-size: 18px; }
         .rn-body h3 { font-size: 15px; }
-        .rn-body p { margin: 10px 0; }
+        .rn-body p { margin: 10px 0; color: ${token.colorText}; }
         .rn-body ul, .rn-body ol { padding-left: 24px; }
-        .rn-body li { margin: 4px 0; }
-        .rn-body code { background: var(--ta-code-bg, #f5f5f5); padding: 1px 5px;
-          border-radius: 4px; font-size: 12.5px; }
+        .rn-body li { margin: 4px 0; color: ${token.colorText}; }
+        .rn-body code {
+          background: ${token.colorFillTertiary};
+          color: ${token.colorText};
+          padding: 1px 5px; border-radius: 4px; font-size: 12.5px;
+        }
+        .rn-body pre {
+          background: ${token.colorFillQuaternary};
+          color: ${token.colorText};
+          padding: 12px 14px; border-radius: 6px; overflow-x: auto;
+        }
+        .rn-body a { color: ${token.colorLink}; }
+        .rn-body blockquote {
+          border-left: 3px solid ${token.colorPrimary};
+          color: ${token.colorTextSecondary};
+          margin: 12px 0; padding: 2px 14px;
+        }
+        .rn-body strong { color: ${token.colorText}; }
       `}</style>
       <div className="rn-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.body_md}</ReactMarkdown>

@@ -37,7 +37,9 @@ export function Login() {
       const me = await fetchMe();
       setSession(tokenResp.access_token, me);
       const from = (location.state as LocationState | null)?.from?.pathname;
-      navigate(from ?? "/runs", { replace: true });
+      // Default landing after login — system dashboard of the active
+      // workspace. DashboardPage redirects to the specific dashboard.
+      navigate(from ?? "/dashboard", { replace: true });
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data

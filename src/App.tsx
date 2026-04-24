@@ -26,6 +26,9 @@ import { AppsStore } from "@/pages/AppsStore";
 import { WorkspaceApps } from "@/pages/WorkspaceApps";
 import { WorkspaceDictionaries } from "@/pages/WorkspaceDictionaries";
 import { WorkspaceMembers } from "@/pages/WorkspaceMembers";
+import { DashboardPage } from "@/pages/DashboardPage";
+import { WidgetPackagesPage } from "@/pages/WidgetPackagesPage";
+import { WidgetTemplatesPage } from "@/pages/WidgetTemplatesPage";
 import { FeedbackInbox } from "@/pages/FeedbackInbox";
 import { HelpPage } from "@/pages/Help";
 import { WhatsNewPage } from "@/pages/WhatsNewPage";
@@ -134,6 +137,10 @@ export default function App() {
           <Route path="/runs" element={<Runs />} />
           <Route path="/runs/:id/progress" element={<RunProgress />} />
           <Route path="/runs/:id/results" element={<RunResults />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard/:id" element={<DashboardPage />} />
+          <Route path="/widget-templates" element={<WidgetTemplatesPage />} />
+          <Route path="/widget-packages" element={<WidgetPackagesPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/help" element={<HelpPage />} />
@@ -224,7 +231,7 @@ export default function App() {
           />
         </Route>
 
-        <Route path="*" element={<Navigate to="/runs" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </WhatsNewProvider>
     </ConfigProvider>

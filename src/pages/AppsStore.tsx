@@ -18,6 +18,7 @@ import {
   Input,
   Space,
   Tag,
+  theme as antdTheme,
   Typography,
   Upload,
 } from "antd";
@@ -99,6 +100,7 @@ export function AppsStore() {
   });
 
   const canUpload = Boolean(me && (me.permissions ?? []).includes("apps.upload"));
+  const { token: t } = antdTheme.useToken();
 
   const data = storeQ.data ?? [];
   const searching = q.trim().length > 0 || Boolean(category);
@@ -134,7 +136,7 @@ export function AppsStore() {
               size={28}
               src={bundleAssetUrl(p.logo_path) ?? undefined}
               icon={<AppstoreAddOutlined />}
-              style={{ background: "#fafafa", color: "#999", flexShrink: 0, borderRadius: 6 }}
+              style={{ background: t.colorFillQuaternary, color: t.colorTextTertiary, flexShrink: 0, borderRadius: 6 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -173,36 +175,53 @@ export function AppsStore() {
   return (
     <>
       {/* Local type scale + card hover polish — scoped to .store-page */}
+      {/* Все цвета берутся из активных theme-токенов AntD, чтобы
+          магазин одинаково хорошо выглядел и в светлой, и в тёмной
+          теме. Раньше тут был hardcoded белый фон на hero/tiles/chips
+          и тёмно-серый текст — в dark-режиме это читалось как
+          «магазин светлый, а всё остальное тёмное». */}
       <style>{`
         .store-page h1.store-hero-title{
-          font-size: 32px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.5px;
+          font-size: 32px; font-weight: 600; margin: 0 0 6px;
+          letter-spacing: -0.5px; color: ${t.colorText};
         }
-        .store-page .hero-subtitle{font-size: 15px; color: #595959}
+        .store-page .hero-subtitle{font-size: 15px; color: ${t.colorTextSecondary}}
         .store-page .section-head{
           display:flex; align-items:baseline; justify-content:space-between;
           margin: 28px 0 12px;
         }
-        .store-page .section-title{font-size: 20px; font-weight: 600; margin:0; letter-spacing: -0.3px}
-        .store-page .section-sub{color:#8c8c8c; font-size: 13px; margin-top: 2px}
+        .store-page .section-title{
+          font-size: 20px; font-weight: 600; margin:0;
+          letter-spacing: -0.3px; color: ${t.colorText};
+        }
+        .store-page .section-sub{color:${t.colorTextTertiary}; font-size: 13px; margin-top: 2px}
         .store-page .hero-card{
           position:relative; overflow:hidden; border-radius: 16px;
-          cursor:pointer; transition: transform .25s;
-          background:#fafafa; border: 1px solid #ececec;
+          cursor:pointer; transition: transform .25s, border-color .15s;
+          background: ${t.colorBgContainer};
+          border: 1px solid ${t.colorBorderSecondary};
         }
-        .store-page .hero-card:hover{transform: translateY(-2px)}
+        .store-page .hero-card:hover{transform: translateY(-2px); border-color: ${t.colorPrimary}}
         .store-page .hero-cover{
           height: 260px; background-size:cover; background-position:center;
         }
-        .store-page .hero-body{padding: 18px 22px 20px}
-        .store-page .hero-app-title{font-size: 22px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.3px}
-        .store-page .hero-app-sub{font-size: 13px; color:#8c8c8c}
+        .store-page .hero-body{padding: 18px 22px 20px; color: ${t.colorText}}
+        .store-page .hero-app-title{
+          font-size: 22px; font-weight: 600; margin: 0 0 2px;
+          letter-spacing: -0.3px; color: ${t.colorText};
+        }
+        .store-page .hero-app-sub{font-size: 13px; color: ${t.colorTextTertiary}}
         .store-page .app-tile{
-          border-radius: 14px; padding: 18px; background:#fff; border:1px solid #ececec;
+          border-radius: 14px; padding: 18px;
+          background: ${t.colorBgContainer};
+          border: 1px solid ${t.colorBorderSecondary};
           cursor:pointer; transition: all .2s; height: 100%;
           display:flex; flex-direction:column; gap: 10px;
+          color: ${t.colorText};
         }
         .store-page .app-tile:hover{
-          border-color:#EE3424; box-shadow: 0 4px 16px rgba(238,52,36,0.08);
+          border-color: ${t.colorPrimary};
+          box-shadow: 0 4px 16px ${t.colorPrimary}14;
           transform: translateY(-2px);
         }
         .store-page .app-tile .tile-head{display:flex; gap: 12px; align-items:flex-start}
@@ -210,25 +229,36 @@ export function AppsStore() {
         .store-page .app-tile .tile-name{
           font-size: 15px; font-weight: 600; margin: 0 0 2px;
           white-space: nowrap; overflow:hidden; text-overflow: ellipsis;
+          color: ${t.colorText};
         }
         .store-page .app-tile .tile-desc{
-          font-size: 12.5px; color:#595959; line-height: 1.45;
+          font-size: 12.5px; color: ${t.colorTextSecondary}; line-height: 1.45;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
           overflow: hidden; min-height: 36px;
         }
         .store-page .app-tile .tile-foot{
           display:flex; justify-content:space-between; align-items:center;
-          font-size: 12px; color:#8c8c8c; margin-top:auto;
+          font-size: 12px; color: ${t.colorTextTertiary}; margin-top:auto;
         }
         .store-page .app-tile .tile-rating{display:inline-flex; gap: 4px; align-items:center; color:#faad14}
         .store-page .cat-chips{display:flex; gap: 8px; flex-wrap:wrap}
         .store-page .cat-chip{
           padding: 6px 14px; border-radius: 999px; font-size: 13px;
-          background:#f5f5f5; color:#595959; cursor:pointer; transition:.15s;
-          border: 1px solid transparent; display:inline-flex; align-items:center; gap: 6px;
+          background: ${t.colorFillTertiary};
+          color: ${t.colorTextSecondary};
+          cursor:pointer; transition:.15s;
+          border: 1px solid transparent;
+          display:inline-flex; align-items:center; gap: 6px;
         }
-        .store-page .cat-chip:hover{background:#fafafa; border-color:#d9d9d9}
-        .store-page .cat-chip.active{background:#fff3f3; color:#EE3424; border-color:#EE3424}
+        .store-page .cat-chip:hover{
+          background: ${t.colorFillSecondary};
+          border-color: ${t.colorBorder};
+        }
+        .store-page .cat-chip.active{
+          background: ${t.colorPrimaryBg};
+          color: ${t.colorPrimary};
+          border-color: ${t.colorPrimary};
+        }
         .store-page .row-grid{
           display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
           gap: 14px;
@@ -430,6 +460,7 @@ function HeroCard({
 }) {
   const cover = bundleAssetUrl(pkg.cover_path);
   const logo = bundleAssetUrl(pkg.logo_path);
+  const { token: t } = antdTheme.useToken();
   return (
     <div className="hero-card" onClick={onOpen}>
       {cover && (
@@ -445,10 +476,13 @@ function HeroCard({
           src={logo ?? undefined}
           icon={<AppstoreAddOutlined />}
           style={{
-            background: "#fafafa",
+            // Neutral surface + theme-aware border so the logo chip
+            // blends on both light and dark backgrounds.
+            background: t.colorFillQuaternary,
+            color: t.colorTextTertiary,
             marginTop: cover ? -32 : 0,
-            border: "3px solid #fff",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+            border: `3px solid ${t.colorBgContainer}`,
+            boxShadow: t.boxShadowTertiary,
             flexShrink: 0,
           }}
         />
@@ -463,7 +497,7 @@ function HeroCard({
             )}
           </div>
           <Typography.Paragraph
-            style={{ margin: "10px 0 14px", color: "#595959", fontSize: 13, lineHeight: 1.5 }}
+            style={{ margin: "10px 0 14px", color: t.colorTextSecondary, fontSize: 13, lineHeight: 1.5 }}
             ellipsis={{ rows: 2 }}
           >
             {pkg.description}
@@ -513,6 +547,7 @@ function AppTile({
   categoryLabel: Record<string, string>;
 }) {
   const logo = bundleAssetUrl(pkg.logo_path);
+  const { token: t } = antdTheme.useToken();
   return (
     <div className="app-tile" onClick={onOpen}>
       <div className="tile-head">
@@ -521,11 +556,11 @@ function AppTile({
           size={48}
           src={logo ?? undefined}
           icon={<AppstoreAddOutlined />}
-          style={{ background: "#fafafa", color: "#999", flexShrink: 0, borderRadius: 10 }}
+          style={{ background: t.colorFillQuaternary, color: t.colorTextTertiary, flexShrink: 0, borderRadius: 10 }}
         />
         <div className="tile-body">
           <div className="tile-name">{pkg.name}</div>
-          <div style={{ fontSize: 12, color: "#8c8c8c" }}>
+          <div style={{ fontSize: 12, color: t.colorTextTertiary }}>
             {pkg.author || "—"}
             {!pkg.is_public && (
               <Tag

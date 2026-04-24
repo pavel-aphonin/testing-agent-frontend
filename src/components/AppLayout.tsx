@@ -163,7 +163,23 @@ export function AppLayout() {
   const sysItems: Item[] = [];
   const wsItems: Item[] = [];
 
-  // Workspace group
+  // Workspace group. Dashboard first — it's now the landing page and
+  // contains the at-a-glance overview users come back to most.
+  wsItems.push({
+    key: "/dashboard",
+    icon: <AntIcons.DashboardOutlined />,
+    label: <Link to="/dashboard">Дашборд</Link>,
+  });
+  wsItems.push({
+    key: "/widget-templates",
+    icon: <AntIcons.AppstoreAddOutlined />,
+    label: <Link to="/widget-templates">Шаблоны виджетов</Link>,
+  });
+  wsItems.push({
+    key: "/widget-packages",
+    icon: <AntIcons.BuildOutlined />,
+    label: <Link to="/widget-packages">Пакеты виджетов</Link>,
+  });
   if (hasPerm("runs.view")) {
     wsItems.push({
       key: "/runs",

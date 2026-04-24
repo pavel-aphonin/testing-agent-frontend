@@ -421,6 +421,9 @@ function NavigationTab() {
   // don't have the permission, the item is hidden from the sidebar
   // already and there's no point in the toggle.
   const ITEMS: { key: string; label: string; perm?: string }[] = [
+    { key: "/dashboard",          label: "Дашборд" },
+    { key: "/widget-templates",   label: "Шаблоны виджетов" },
+    { key: "/widget-packages",    label: "Пакеты виджетов" },
     { key: "/runs",               label: "Запуски" },
     { key: "/scenarios",          label: "Сценарии", perm: "scenarios.view" },
     { key: "/test-data",          label: "Тестовые данные", perm: "test_data.view" },

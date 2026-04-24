@@ -25,6 +25,7 @@ import {
   Row,
   Space,
   Tag,
+  theme as antdTheme,
   Tooltip,
   Typography,
 } from "antd";
@@ -55,6 +56,7 @@ export function AppDetail() {
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const nav = useNavigate();
+  const { token: t } = antdTheme.useToken();
 
   const pkgQ = useQuery({
     queryKey: ["app-pkg", id],
@@ -192,26 +194,30 @@ export function AppDetail() {
     <>
       {/* Local markdown typography — compact, matches Ant Design's rhythm.
           Only affects .markdown-body so it doesn't leak into forms/tables. */}
+      {/* Markdown typography — всё, что касается цветов, идёт из
+          активной темы AntD, чтобы читалось и в светлой, и в тёмной. */}
       <style>{`
+        .markdown-body { color: ${t.colorText}; }
         .markdown-body h1, .markdown-body h2, .markdown-body h3 {
           margin: 12px 0 6px; font-size: 14px; font-weight: 600;
+          color: ${t.colorText};
         }
         .markdown-body h1 { font-size: 16px; }
         .markdown-body p { margin: 4px 0; }
         .markdown-body ul, .markdown-body ol { margin: 4px 0; padding-left: 20px; }
         .markdown-body li { margin: 2px 0; }
         .markdown-body code {
-          background: #f3f3f3; padding: 1px 4px; border-radius: 3px;
-          font-size: 12px;
+          background: ${t.colorFillTertiary}; padding: 1px 4px; border-radius: 3px;
+          font-size: 12px; color: ${t.colorText};
         }
         .markdown-body pre {
-          background: #f6f6f6; padding: 8px 10px; border-radius: 4px;
-          overflow-x: auto; font-size: 12px;
+          background: ${t.colorFillQuaternary}; padding: 8px 10px; border-radius: 4px;
+          overflow-x: auto; font-size: 12px; color: ${t.colorText};
         }
-        .markdown-body a { color: #EE3424; }
+        .markdown-body a { color: ${t.colorLink}; }
         .markdown-body blockquote {
-          border-left: 3px solid #EE3424; padding-left: 10px;
-          color: #555; margin: 6px 0;
+          border-left: 3px solid ${t.colorPrimary}; padding-left: 10px;
+          color: ${t.colorTextSecondary}; margin: 6px 0;
         }
       `}</style>
       <Button onClick={() => nav("/apps/store")} style={{ marginBottom: 16 }}>
@@ -240,12 +246,13 @@ export function AppDetail() {
                 src={bundleAssetUrl(pkg.logo_path) ?? undefined}
                 icon={<AppstoreAddOutlined />}
                 style={{
-                  background: "#fafafa",
-                  color: "#999",
-                  // Pull the logo up over the cover a bit, like app stores do.
+                  background: t.colorFillQuaternary,
+                  color: t.colorTextTertiary,
                   marginTop: coverUrl ? -48 : 0,
-                  border: coverUrl ? "4px solid #fff" : undefined,
-                  boxShadow: coverUrl ? "0 2px 8px rgba(0,0,0,0.08)" : undefined,
+                  // Theme-aware border so the "notch" around the logo
+                  // works on both light and dark cards.
+                  border: coverUrl ? `4px solid ${t.colorBgContainer}` : undefined,
+                  boxShadow: coverUrl ? t.boxShadowTertiary : undefined,
                 }}
               />
               <div style={{ flex: 1 }}>
@@ -351,9 +358,9 @@ export function AppDetail() {
                 style={{
                   marginBottom: 16,
                   padding: "12px 14px",
-                  background: "#fafafa",
+                  background: t.colorFillQuaternary,
                   borderRadius: 8,
-                  border: "1px solid #f0f0f0",
+                  border: `1px solid ${t.colorBorderSecondary}`,
                 }}
               >
                 <Space align="center" style={{ justifyContent: "space-between", width: "100%" }}>
@@ -501,19 +508,37 @@ export function AppDetail() {
                 size="small"
                 accordion={false}
                 defaultActiveKey={[versionsQ.data![0]!.id]}
-                items={versionsQ.data!.map((v) => ({
-                  key: v.id,
-                  label: (
-                    <Space>
-                      <Tag color={v.is_deprecated ? "default" : "blue"}>v{v.version}</Tag>
-                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                        {ruDate(v.created_at)}
-                      </Typography.Text>
-                      {v.is_deprecated && <Tag>Устарела</Tag>}
-                    </Space>
-                  ),
-                  children: v.changelog ? (
-                    <div className="markdown-body" style={{ fontSize: 13, color: "#333" }}>
+                items={versionsQ.data!.map((v, idx) => {
+                  // Colour coding:
+                  //   • latest published (index 0) → green (green)
+                  //   • deprecated → red (deprecated / "не поддерживается")
+                  //   • everything else → default (passive history)
+                  const isLatest = idx === 0 && !v.is_deprecated;
+                  const tagColor: string = v.is_deprecated
+                    ? "red"
+                    : isLatest
+                    ? "green"
+                    : "default";
+                  return {
+                    key: v.id,
+                    label: (
+                      <Space>
+                        <Tag color={tagColor}>v{v.version}</Tag>
+                        {isLatest && (
+                          <Tag color="green" style={{ fontSize: 10 }}>
+                            актуальная
+                          </Tag>
+                        )}
+                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                          {ruDate(v.created_at)}
+                        </Typography.Text>
+                        {v.is_deprecated && <Tag color="red">не поддерживается</Tag>}
+                      </Space>
+                    ),
+                    children: v.changelog ? (
+                    // Color now comes from the ``.markdown-body`` CSS
+                    // above (which is themed), no inline override.
+                    <div className="markdown-body" style={{ fontSize: 13 }}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {v.changelog}
                       </ReactMarkdown>
@@ -523,7 +548,8 @@ export function AppDetail() {
                       без описания
                     </Typography.Text>
                   ),
-                }))}
+                  };
+                })}
               />
             )}
           </Card>

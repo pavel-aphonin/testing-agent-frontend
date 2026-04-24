@@ -1,6 +1,6 @@
 import { AppstoreOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Avatar, Button, Dropdown, Space, Tag, Typography } from "antd";
+import { Avatar, Button, Dropdown, Space, Tag, theme as antdTheme, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useEffect } from "react";
 
@@ -19,6 +19,7 @@ export function WorkspaceSwitcher() {
   const token = useAuthStore((s) => s.token);
   const current = useWorkspaceStore((s) => s.current);
   const setCurrent = useWorkspaceStore((s) => s.setCurrent);
+  const { token: t } = antdTheme.useToken();
 
   const { data: workspaces } = useQuery({
     queryKey: ["my-workspaces"],
@@ -81,7 +82,10 @@ export function WorkspaceSwitcher() {
           gap: 6,
           fontWeight: 600,
           fontSize: 13,
-          color: "#333",
+          // Use the theme's primary text color so we stay readable in
+          // both light and dark mode. Previously hardcoded #333 which
+          // disappeared on dark backgrounds.
+          color: t.colorText,
           maxWidth: 240,
         }}
       >
@@ -97,7 +101,7 @@ export function WorkspaceSwitcher() {
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {current?.name ?? "Выберите пространство"}
         </span>
-        <SwapOutlined style={{ fontSize: 10, color: "#999" }} />
+        <SwapOutlined style={{ fontSize: 10, color: t.colorTextTertiary }} />
       </Button>
     </Dropdown>
   );

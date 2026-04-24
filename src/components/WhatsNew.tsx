@@ -158,6 +158,13 @@ function WhatsNewModal({ open, onClose }: { open: boolean; onClose: () => void }
     },
   });
 
+  // "Latest" = the first non-deprecated entry in the list (the list
+  // comes back sorted by released_at DESC from the API). Deprecated
+  // flag doesn't exist for release notes today — we treat the newest
+  // published note as latest regardless of dismissed state.
+  const notes = listQ.data ?? [];
+  const latestId = notes.length > 0 ? notes[0].id : null;
+
   return (
     <Modal
       open={open}
@@ -173,6 +180,39 @@ function WhatsNewModal({ open, onClose }: { open: boolean; onClose: () => void }
         </Space>
       }
     >
+      {/* Theme-aware markdown body styles for cards that come with body_md
+          (ReleaseNoteFull). Scoped to .rn-body so they don't leak. */}
+      <style>{`
+        .rn-body { line-height: 1.6; font-size: 13.5px; color: ${token.colorText}; }
+        .rn-body h1, .rn-body h2, .rn-body h3 {
+          font-weight: 600; letter-spacing: -0.2px; margin: 16px 0 6px;
+          color: ${token.colorText};
+        }
+        .rn-body h1 { font-size: 18px; }
+        .rn-body h2 { font-size: 16px; }
+        .rn-body h3 { font-size: 14px; }
+        .rn-body p { margin: 8px 0; color: ${token.colorText}; }
+        .rn-body ul, .rn-body ol { padding-left: 22px; }
+        .rn-body li { margin: 3px 0; color: ${token.colorText}; }
+        .rn-body code {
+          background: ${token.colorFillTertiary};
+          color: ${token.colorText};
+          padding: 1px 5px; border-radius: 4px; font-size: 12px;
+        }
+        .rn-body pre {
+          background: ${token.colorFillQuaternary};
+          color: ${token.colorText};
+          padding: 10px 12px; border-radius: 6px; overflow-x: auto;
+        }
+        .rn-body a { color: ${token.colorLink}; }
+        .rn-body blockquote {
+          border-left: 3px solid ${token.colorPrimary};
+          color: ${token.colorTextSecondary};
+          margin: 10px 0; padding: 2px 12px;
+        }
+        .rn-body strong { color: ${token.colorText}; }
+      `}</style>
+
       <div style={{ padding: "12px 24px 16px", maxHeight: "86vh", overflowY: "auto" }}>
         <Space
           style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}
@@ -192,20 +232,21 @@ function WhatsNewModal({ open, onClose }: { open: boolean; onClose: () => void }
             size="small"
             onClick={() => dismissAllM.mutate()}
             loading={dismissAllM.isPending}
-            disabled={(listQ.data ?? []).every((n) => n.dismissed)}
+            disabled={notes.every((n) => n.dismissed)}
           >
             Отметить всё прочитанным
           </Button>
         </Space>
 
-        {listQ.isLoading ? null : (listQ.data?.length ?? 0) === 0 ? (
+        {listQ.isLoading ? null : notes.length === 0 ? (
           <Empty description="Ничего не найдено" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <div>
-            {(listQ.data ?? []).map((note) => (
+            {notes.map((note) => (
               <NoteCard
                 key={note.id}
                 note={note}
+                isLatest={note.id === latestId}
                 onDismiss={() => dismissM.mutate(note.id)}
                 dismissing={dismissM.isPending && dismissM.variables === note.id}
                 onNavigate={onClose}
@@ -226,17 +267,23 @@ function WhatsNewModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 function NoteCard({
   note,
+  isLatest,
   onDismiss,
   dismissing,
   onNavigate,
 }: {
   note: ReleaseNoteSummary & { body_md?: string };
+  isLatest: boolean;
   onDismiss: () => void;
   dismissing: boolean;
   onNavigate: () => void;
 }) {
   const { token } = antdTheme.useToken();
   const [hover, setHover] = useState(false);
+  // Green for the newest release, red (faded) for older releases that
+  // have been superseded. "default" would read as "neutral" which is
+  // not quite right here — the user asked for red on outdated.
+  const tagColor = isLatest ? "green" : "red";
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -270,7 +317,13 @@ function NoteCard({
         </Tooltip>
       )}
       <Space align="center" style={{ marginBottom: 6 }}>
-        <Tag color={note.dismissed ? "default" : "red"}>v{note.version}</Tag>
+        <Tag color={tagColor}>v{note.version}</Tag>
+        {isLatest && (
+          <Tag color="green" style={{ fontSize: 10 }}>актуальная</Tag>
+        )}
+        {!isLatest && (
+          <Tag color="red" style={{ fontSize: 10 }}>устарела</Tag>
+        )}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           {new Date(note.released_at).toLocaleDateString("ru-RU", {
             day: "2-digit", month: "long", year: "numeric",

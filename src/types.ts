@@ -422,6 +422,150 @@ export interface BrandingRead {
   updated_at: string;
 }
 
+// ───── Dashboards ─────────────────────────────────────────────────────
+
+export type WidgetType =
+  // Every user-visible variant from ApexCharts' "Chart Types" docs
+  // plus our own ``table``. Some of these collapse to the same Apex
+  // ``type`` prop under the hood (bar vs barHorizontal, mixed via
+  // per-series types, funnel via ``plotOptions.bar.isFunnel``) —
+  // see WidgetRenderer for how each is actually drawn.
+  | "line"
+  | "bar"            // column (vertical bars)
+  | "barHorizontal"  // horizontal bars
+  | "area"
+  | "rangeArea"      // two-line band
+  | "mixed"          // line + column combo
+  | "pie"
+  | "donut"
+  | "radialBar"
+  | "polarArea"
+  | "radar"
+  | "scatter"
+  | "bubble"
+  | "heatmap"
+  | "treemap"
+  | "boxplot"
+  | "candlestick"
+  | "rangeBar"       // timeline
+  | "funnel"
+  | "table"
+  // Native (non-ApexCharts) widgets
+  | "stat"           // single KPI number with optional trend indicator
+  | "progress"       // progress bar toward a target
+  | "sparkline"      // compact trend line with no axes, usually with KPI
+  // Phase 3b — user-authored iframe widgets
+  | "custom";
+
+export interface DashboardWidgetRead {
+  id: string;
+  dashboard_id: string;
+  widget_type: WidgetType;
+  title: string;
+  datasource_code: string | null;
+  datasource_params: Record<string, unknown> | null;
+  chart_options: Record<string, unknown> | null;
+  grid_x: number;
+  grid_y: number;
+  grid_w: number;
+  grid_h: number;
+}
+
+export interface DashboardSummary {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  is_system: boolean;
+  owner_user_id: string | null;
+  sort_order: number;
+  can_edit: boolean;
+}
+
+export interface DashboardFull extends DashboardSummary {
+  widgets: DashboardWidgetRead[];
+}
+
+export interface WidgetTemplateRead {
+  id: string;
+  workspace_id: string;
+  author_user_id: string | null;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  widget_type: WidgetType;
+  datasource_code: string | null;
+  datasource_params: Record<string, unknown> | null;
+  chart_options: Record<string, unknown> | null;
+  default_w: number;
+  default_h: number;
+  created_at: string;
+}
+
+// Phase 3b — custom widget packages
+export interface WidgetPackageRead {
+  id: string;
+  workspace_id: string;
+  author_user_id: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  version: string;
+  manifest: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface WidgetPackageSource {
+  id: string;
+  code: string;
+  version: string;
+  manifest: Record<string, unknown>;
+  html_source: string;
+}
+
+export interface WidgetPackageCreate {
+  code: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  version?: string;
+  manifest?: Record<string, unknown>;
+  html_source: string;
+  is_active?: boolean;
+}
+
+export interface WidgetPackageUpdate {
+  name?: string;
+  description?: string | null;
+  icon?: string | null;
+  version?: string;
+  manifest?: Record<string, unknown>;
+  html_source?: string;
+  is_active?: boolean;
+}
+
+export interface DatasourceMetadata {
+  code: string;
+  name: string;
+  description: string;
+  kind: "categorical" | "timeseries" | "tabular";
+  /** Group key — ``runs`` / ``defects`` / etc. Used for <optgroup>. */
+  group?: string;
+  params?: { code: string; type: "number" | "string"; default: unknown }[];
+}
+
+export interface WidgetDataResponse {
+  categories?: string[];
+  series?: { name: string; data: number[] }[];
+  is_tabular?: boolean;
+  columns?: { code: string; name: string }[];
+  rows?: unknown[][];
+  error?: string;
+}
+
 export interface ReleaseNoteSummary {
   id: string;
   version: string;
