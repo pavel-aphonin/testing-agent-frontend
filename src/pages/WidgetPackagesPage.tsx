@@ -22,7 +22,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createWidgetPackage,
@@ -435,6 +435,13 @@ function EditPackageDrawer({
         <Form.Item name="_unused" label="&nbsp;" style={{ display: "none" }}>
           <InputNumber />
         </Form.Item>
+
+        {/* Live preview (PER-12). Reads the html_source field via
+            Form.useWatch + 500ms debounce so each keystroke doesn't
+            remount the iframe. The bootstrap injection mirrors what
+            CustomWidget does at runtime, so authors see exactly the
+            wrapper their package will run inside. */}
+        <PackagePreview form={form} />
       </Form>
       <Alert
         type="info"
@@ -488,3 +495,134 @@ const EXAMPLE_PACKAGE_HTML = `<!doctype html>
 </script>
 </body>
 </html>`;
+
+
+/* ── Preview component (PER-12) ────────────────────────────────────
+ * Live preview of the package HTML in a sandboxed iframe with the
+ * same bootstrap that CustomWidget uses at runtime. Authors edit the
+ * HTML and see the result inside the drawer instead of bouncing to
+ * a dashboard, adding a custom widget, picking the package, and
+ * waiting for the data fetch.
+ *
+ * Updates are debounced (500 ms) so heavy keystroking doesn't trash
+ * the iframe instance every frame. The "Снова отправить данные"
+ * button re-posts the current test payload — useful when the package
+ * is rebuilding state and the author wants to manually re-trigger
+ * a render call.
+ * ────────────────────────────────────────────────────────────────── */
+
+const TEST_PAYLOAD = {
+  widget: {
+    id: "preview-widget",
+    title: "Тестовый виджет",
+    widget_type: "custom" as const,
+  },
+  data: {
+    categories: ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница"],
+    series: [{ name: "Тестовая серия", data: [3, 7, 5, 9, 4] }],
+  },
+};
+
+function PackagePreview({ form }: { form: any }) {
+  const html: string = Form.useWatch("html_source", form) ?? "";
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Debounce text edits so we don't tear down the iframe on every key.
+  // 500 ms feels right — short enough to look "live", long enough that
+  // even a fast typist gets at most a couple of remounts per word.
+  const [debouncedHtml, setDebouncedHtml] = useState(html);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedHtml(html), 500);
+    return () => clearTimeout(t);
+  }, [html]);
+
+  // Same bootstrap CustomWidget injects at runtime — keeps the preview
+  // honest about the actual contract (window.render, postMessage,
+  // widget-ready ack).
+  const srcDoc = useMemo(() => {
+    if (!debouncedHtml) return undefined;
+    const bootstrap = `
+<script>
+  window.__widget = null;
+  window.addEventListener("message", (ev) => {
+    if (ev.data && ev.data.type === "widget-data") {
+      window.__widget = ev.data.payload;
+      if (typeof window.render === "function") {
+        try { window.render(ev.data.payload); } catch (e) { console.error(e); }
+      }
+    }
+  });
+  window.addEventListener("load", () => {
+    window.parent.postMessage({ type: "widget-ready" }, "*");
+  });
+</script>`;
+    if (/<\/body>/i.test(debouncedHtml)) {
+      return debouncedHtml.replace(/<\/body>/i, `${bootstrap}</body>`);
+    }
+    return bootstrap + debouncedHtml;
+  }, [debouncedHtml]);
+
+  const post = () => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "widget-data", payload: TEST_PAYLOAD },
+      "*",
+    );
+  };
+
+  // Auto-post on widget-ready and after every srcDoc rebuild. The ready
+  // listener handles the iframe's own load timing; the direct post is
+  // a best-effort for cases where load already fired before the
+  // listener attached.
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.data && ev.data.type === "widget-ready") post();
+    };
+    window.addEventListener("message", onMessage);
+    post();
+    return () => window.removeEventListener("message", onMessage);
+  }, [srcDoc]);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
+        <Typography.Text strong>Предпросмотр</Typography.Text>
+        <Button size="small" onClick={post}>
+          Снова отправить данные
+        </Button>
+      </Space>
+      {srcDoc ? (
+        <iframe
+          ref={iframeRef}
+          title="Preview"
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          style={{
+            width: "100%",
+            height: 320,
+            border: "1px solid #d9d9d9",
+            borderRadius: 6,
+            background: "transparent",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 320,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px dashed #d9d9d9",
+            borderRadius: 6,
+            color: "#8c8c8c",
+            fontSize: 13,
+          }}
+        >
+          Заполните HTML-источник, чтобы увидеть превью
+        </div>
+      )}
+      <Typography.Paragraph type="secondary" style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}>
+        Тестовая нагрузка: 5 категорий, 1 серия из 5 чисел. Обновляется через
+        полсекунды после правки HTML.
+      </Typography.Paragraph>
+    </div>
+  );
+}
