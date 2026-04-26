@@ -12,6 +12,9 @@ export interface DefectRead {
   description: string;
   screenshot_path: string | null;
   external_ticket_id: string | null;
+  /** Raw LLM rationale from the worker's defect detector. Null when
+   *  the heuristic fallback fired or the detector was disabled. */
+  llm_analysis_json: Record<string, unknown> | null;
   created_at: string;
 }
 
