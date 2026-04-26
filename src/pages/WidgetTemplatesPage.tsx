@@ -1,4 +1,9 @@
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  EditOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -20,6 +25,7 @@ import { useEffect, useState } from "react";
 import {
   deleteWidgetTemplate,
   listWidgetTemplates,
+  reorderWidgetTemplates,
   updateWidgetTemplate,
 } from "@/api/dashboards";
 import { useAuthStore } from "@/store/auth";
@@ -68,6 +74,28 @@ export function WidgetTemplatesPage() {
     },
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
+
+  // Manual reorder via ↑/↓ buttons. We compute fresh sort_order values
+  // from the current row order with step=10, then PUT a batch update.
+  // Cheaper than DnD and works without extra deps; can swap to dnd-kit
+  // later if the list grows past ~20 items.
+  const reorderM = useMutation({
+    mutationFn: (items: { id: string; sort_order: number }[]) =>
+      reorderWidgetTemplates(ws!.id, items),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["widget-templates"] }),
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
+
+  const moveTemplate = (idx: number, dir: -1 | 1) => {
+    const list = q.data ?? [];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    const reordered = [...list];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    reorderM.mutate(
+      reordered.map((t, i) => ({ id: t.id, sort_order: i * 10 })),
+    );
+  };
 
   if (!ws) return <Alert type="info" message="Выберите рабочее пространство" />;
 
@@ -124,9 +152,25 @@ export function WidgetTemplatesPage() {
               },
               {
                 title: "",
-                width: 90,
-                render: (_, r: WidgetTemplateRead) => (
+                width: 150,
+                render: (_, r: WidgetTemplateRead, idx) => (
                   <Space size={0}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ArrowUpOutlined />}
+                      disabled={idx === 0 || reorderM.isPending}
+                      onClick={() => moveTemplate(idx, -1)}
+                      title="Поднять выше"
+                    />
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ArrowDownOutlined />}
+                      disabled={idx === rows.length - 1 || reorderM.isPending}
+                      onClick={() => moveTemplate(idx, 1)}
+                      title="Опустить ниже"
+                    />
                     <Button
                       size="small"
                       type="text"

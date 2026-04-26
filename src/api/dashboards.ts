@@ -209,3 +209,23 @@ export async function updateWidgetPackage(
 export async function deleteWidgetPackage(id: string): Promise<void> {
   await apiClient.delete(`/api/widget-packages/${id}`);
 }
+
+/* ── Reorder (PER-15) ───────────────────────────────────────────── */
+
+export async function reorderWidgetTemplates(
+  wsId: string,
+  items: { id: string; sort_order: number }[],
+): Promise<void> {
+  await apiClient.put(`/api/workspaces/${wsId}/widget-templates/reorder`, {
+    items,
+  });
+}
+
+export async function reorderWidgetPackages(
+  wsId: string,
+  items: { id: string; sort_order: number }[],
+): Promise<void> {
+  await apiClient.put(`/api/workspaces/${wsId}/widget-packages/reorder`, {
+    items,
+  });
+}

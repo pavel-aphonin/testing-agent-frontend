@@ -1,4 +1,10 @@
-import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  EditOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -23,6 +29,7 @@ import {
   deleteWidgetPackage,
   getWidgetPackageSource,
   listWidgetPackages,
+  reorderWidgetPackages,
   updateWidgetPackage,
 } from "@/api/dashboards";
 import { useAuthStore } from "@/store/auth";
@@ -71,6 +78,25 @@ export function WidgetPackagesPage() {
     },
     onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
   });
+
+  // Reorder via ↑/↓ — see WidgetTemplatesPage for the same pattern.
+  const reorderM = useMutation({
+    mutationFn: (items: { id: string; sort_order: number }[]) =>
+      reorderWidgetPackages(ws!.id, items),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["widget-packages"] }),
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
+
+  const movePackage = (idx: number, dir: -1 | 1) => {
+    const list = q.data ?? [];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    const reordered = [...list];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    reorderM.mutate(
+      reordered.map((p, i) => ({ id: p.id, sort_order: i * 10 })),
+    );
+  };
 
   if (!ws) return <Alert type="info" message="Выберите рабочее пространство" />;
 
@@ -155,9 +181,25 @@ export function WidgetPackagesPage() {
               },
               {
                 title: "",
-                width: 110,
-                render: (_, r: WidgetPackageRead) => (
+                width: 170,
+                render: (_, r: WidgetPackageRead, idx) => (
                   <Space size={0}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ArrowUpOutlined />}
+                      disabled={idx === 0 || reorderM.isPending}
+                      onClick={() => movePackage(idx, -1)}
+                      title="Поднять выше"
+                    />
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<ArrowDownOutlined />}
+                      disabled={idx === rows.length - 1 || reorderM.isPending}
+                      onClick={() => movePackage(idx, 1)}
+                      title="Опустить ниже"
+                    />
                     <Button
                       size="small"
                       type="text"
