@@ -555,7 +555,13 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
             name="quick_refresh_seconds"
             label="Автообновление данных, сек"
             style={{ marginBottom: 0 }}
-            extra="0 = выключено. Минимум 10 сек. Обновляется только этот виджет."
+            extra={
+              <span>
+                0 = выключено. Минимум 30 сек (значения ≤10 игнорируются на сервере).
+                Бэкенд кеширует одинаковые источники между виджетами, так что
+                несколько KPI на тот же источник = один SQL.
+              </span>
+            }
           >
             <InputNumber min={0} max={3600} step={30} style={{ width: 160 }} />
           </Form.Item>
