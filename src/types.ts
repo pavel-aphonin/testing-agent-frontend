@@ -981,6 +981,14 @@ export interface RunEdgeSummary {
   action_details_json: Record<string, unknown> | null;
   success: boolean;
   step_idx: number;
+  /** Timeline (PER-25): relative paths under app_uploads_dir.
+   *  Use the /api/runs/{id}/edges/{edge_id}/screenshot?side=before|after
+   *  endpoint to fetch the actual PNGs. */
+  screenshot_before_path?: string | null;
+  screenshot_after_path?: string | null;
+  /** One-line LLM rationale for picking this action; null in MC mode
+   *  and on edges produced by the deterministic scenario runner. */
+  llm_reasoning?: string | null;
   created_at: string;
 }
 

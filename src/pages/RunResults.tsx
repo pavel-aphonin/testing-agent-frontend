@@ -22,6 +22,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getRunResults } from "@/api/runs";
 import { AppSlots } from "@/components/AppSlots";
 import { DefectsPanel } from "@/components/DefectsPanel";
+import { RunTimeline } from "@/components/RunTimeline";
 import { PathFinder } from "@/components/graph/PathFinder";
 import { StateGraph } from "@/components/graph/StateGraph";
 import type { RunEdgeSummary, RunScreenSummary, RunStatus } from "@/types";
@@ -329,6 +330,20 @@ export function RunResults() {
       >
         {runId && <DefectsPanel runId={runId} />}
       </Card>
+
+      {/* Step-by-step timeline (PER-25). Hidden when there are no edges
+          to draw. Reads screenshot_before / screenshot_after from each
+          edge and falls back gracefully when those are absent (older
+          runs, MC mode). */}
+      {runId && filteredEdges.length > 0 && (
+        <Card
+          title={`Хронология шагов (${filteredEdges.length})`}
+          size="small"
+          style={{ marginBottom: 16 }}
+        >
+          <RunTimeline runId={runId} edges={filteredEdges} />
+        </Card>
+      )}
 
       {screens.length > 1 && (
         <div style={{ marginBottom: 16 }}>
