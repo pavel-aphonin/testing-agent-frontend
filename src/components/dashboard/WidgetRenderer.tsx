@@ -517,6 +517,11 @@ function buildApex(
 
   const common: ApexOptions = {
     chart: {
+      // Stable per-widget id so external code (e.g. WidgetShell's
+      // PNG/SVG export menu) can target this chart via
+      // ``ApexCharts.exec(widget.id, "dataURI" | "exportToSVG")``.
+      // Apex requires the id to be a string.
+      id: widget.id,
       background: "transparent",
       toolbar: { show: false },
       animations: { enabled: true, speed: 280 },
