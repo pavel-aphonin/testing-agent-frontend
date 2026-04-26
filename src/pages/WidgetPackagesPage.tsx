@@ -403,7 +403,16 @@ function EditPackageDrawer({
         <Form.Item
           name="manifest"
           label="Манифест (JSON)"
-          extra="Поля allowed_sources и config_fields пока лишь декоративны — пригодятся для ACL и UI-формы."
+          extra={
+            <span>
+              <strong>allowed_sources</strong> — массив кодов источников, которые
+              пакет умеет рендерить. Пусто или <Typography.Text code>["*"]</Typography.Text> = любой источник.
+              Например: <Typography.Text code>{`["runs.by_day", "defects.by_day"]`}</Typography.Text>.
+              Виджет с другим источником покажет предупреждение и не получит данные.
+              <br />
+              <strong>config_fields</strong> — пока декоративно (UI-форма для опций пакета — в планах).
+            </span>
+          }
         >
           <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} />
         </Form.Item>

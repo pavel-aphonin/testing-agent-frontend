@@ -141,9 +141,22 @@ function CustomWidget({
   }, [pkgQ.data]);
 
   // Re-post data every time it changes (and once on load via "widget-ready").
+  // Honours manifest.allowed_sources (PER-16): if the package's manifest
+  // restricts data sources and the current widget's source isn't on that
+  // list, we DO NOT post anything — the user sees the allow-list error
+  // banner below instead of the iframe receiving silent data.
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !data) return;
+
+    const allowedSources = (pkgQ.data?.manifest as { allowed_sources?: string[] } | undefined)
+      ?.allowed_sources;
+    const sourceAllowed =
+      !allowedSources ||
+      allowedSources.length === 0 ||
+      allowedSources.includes("*") ||
+      (widget.datasource_code != null && allowedSources.includes(widget.datasource_code));
+    if (!sourceAllowed) return;
 
     const post = () => {
       iframe.contentWindow?.postMessage(
@@ -160,7 +173,7 @@ function CustomWidget({
     // Also try a best-effort direct post in case load already fired
     post();
     return () => window.removeEventListener("message", onMessage);
-  }, [widget, data]);
+  }, [widget, data, pkgQ.data]);
 
   if (!packageId) {
     return (
@@ -183,6 +196,34 @@ function CustomWidget({
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description="Пакет не найден или удалён"
+        style={{ margin: "auto" }}
+      />
+    );
+  }
+  // Manifest allow-list check (PER-16). Packages declare which data
+  // source codes they understand via manifest.allowed_sources. Missing,
+  // empty, or containing "*" means "any source". Otherwise the current
+  // widget.datasource_code must be in the list — if not, we render an
+  // alert *and* the iframe stops receiving data updates (see the
+  // useEffect above, which short-circuits when this guard fails).
+  const allowedSources = (pkgQ.data.manifest as { allowed_sources?: string[] } | undefined)
+    ?.allowed_sources;
+  const isAllowed =
+    !allowedSources ||
+    allowedSources.length === 0 ||
+    allowedSources.includes("*") ||
+    (widget.datasource_code != null && allowedSources.includes(widget.datasource_code));
+  if (!isAllowed) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={
+          <Typography.Text type="secondary">
+            Пакет «{pkgQ.data.code}» не поддерживает источник{" "}
+            <Typography.Text code>{widget.datasource_code ?? "—"}</Typography.Text>.
+            Разрешены: {(allowedSources ?? []).join(", ") || "—"}
+          </Typography.Text>
+        }
         style={{ margin: "auto" }}
       />
     );
