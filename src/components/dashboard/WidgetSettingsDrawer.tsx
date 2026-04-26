@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  ColorPicker,
   Divider,
   Drawer,
   Form,
@@ -208,6 +209,11 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
     return out;
   })();
 
+  // Live-watch widget_type so the KPI/Progress block can show/hide based
+  // on the current selection (not just the saved widget). Without watch,
+  // toggling type → save was the only way to reveal those fields.
+  const watchedType = Form.useWatch("widget_type", form);
+
   useEffect(() => {
     if (widget) {
       const opts = (widget.chart_options ?? {}) as any;
@@ -224,6 +230,15 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
         quick_no_legend: opts?.legend?.show === false,
         quick_refresh_seconds: opts?._refresh_seconds ?? 0,
         quick_drilldown_url: opts?._drilldown_url ?? "",
+        // KPI/Progress options — top-level in chart_options (no underscore
+        // prefix because the renderer reads them as native ``opts.X``).
+        kpi_unit: opts?.unit ?? "",
+        kpi_precision: opts?.precision ?? 0,
+        kpi_good_direction: opts?.goodDirection ?? "up",
+        kpi_compare_baseline: opts?.compareBaseline ?? "previous",
+        progress_target: opts?.target ?? 100,
+        progress_style: opts?.style ?? "circle",
+        progress_stroke_color: opts?.strokeColor ?? "",
       });
     }
   }, [widget, form]);
@@ -231,7 +246,10 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
   // Merge quick-option toggles into the raw chart_options blob.
   // Underscore-prefixed keys (``_refresh_seconds``, ``_drilldown_url``)
   // are NOT part of Apex's schema — they're our own extensions; Apex
-  // ignores them, our renderer/refresh logic reads them.
+  // ignores them, our renderer/refresh logic reads them. KPI/Progress
+  // keys (unit, precision, target, style, ...) are read by Stat/Progress
+  // renderers from top-level chart_options, so we set them without
+  // an underscore prefix to keep WidgetRenderer code unchanged.
   const mergeQuickOptions = (
     rawOpts: Record<string, unknown>,
     quick: {
@@ -240,6 +258,14 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
       no_legend?: boolean;
       refresh_seconds?: number;
       drilldown_url?: string;
+      widget_type?: string;
+      kpi_unit?: string;
+      kpi_precision?: number;
+      kpi_good_direction?: "up" | "down";
+      kpi_compare_baseline?: "first" | "previous";
+      progress_target?: number;
+      progress_style?: "line" | "circle" | "dashboard";
+      progress_stroke_color?: string;
     },
   ) => {
     const out: any = { ...rawOpts };
@@ -262,6 +288,44 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
     } else {
       delete out._drilldown_url;
     }
+
+    // KPI block — applies to ``stat`` and ``sparkline`` (label/unit are
+    // also relevant for sparkline tooltip in the future).
+    const isKpiType = quick.widget_type === "stat" || quick.widget_type === "sparkline";
+    if (isKpiType) {
+      if (quick.kpi_unit !== undefined) {
+        if (quick.kpi_unit.trim()) out.unit = quick.kpi_unit.trim();
+        else delete out.unit;
+      }
+      if (quick.kpi_precision !== undefined && quick.kpi_precision >= 0) {
+        out.precision = quick.kpi_precision;
+      }
+      if (quick.widget_type === "stat") {
+        if (quick.kpi_good_direction) out.goodDirection = quick.kpi_good_direction;
+        if (quick.kpi_compare_baseline) out.compareBaseline = quick.kpi_compare_baseline;
+      }
+    }
+
+    // Progress block.
+    if (quick.widget_type === "progress") {
+      if (quick.kpi_unit !== undefined) {
+        if (quick.kpi_unit.trim()) out.unit = quick.kpi_unit.trim();
+        else delete out.unit;
+      }
+      if (quick.kpi_precision !== undefined && quick.kpi_precision >= 0) {
+        out.precision = quick.kpi_precision;
+      }
+      if (quick.progress_target !== undefined && quick.progress_target > 0) {
+        out.target = quick.progress_target;
+      }
+      if (quick.progress_style) out.style = quick.progress_style;
+      if (quick.progress_stroke_color && quick.progress_stroke_color.trim()) {
+        out.strokeColor = quick.progress_stroke_color.trim();
+      } else {
+        delete out.strokeColor;
+      }
+    }
+
     return out;
   };
 
@@ -354,6 +418,18 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
                   no_legend: v.quick_no_legend,
                   refresh_seconds: v.quick_refresh_seconds,
                   drilldown_url: v.quick_drilldown_url,
+                  widget_type: v.widget_type,
+                  kpi_unit: v.kpi_unit,
+                  kpi_precision: v.kpi_precision,
+                  kpi_good_direction: v.kpi_good_direction,
+                  kpi_compare_baseline: v.kpi_compare_baseline,
+                  progress_target: v.progress_target,
+                  progress_style: v.progress_style,
+                  // ColorPicker returns either a string (hex) or a Color
+                  // instance — normalize.
+                  progress_stroke_color: typeof v.progress_stroke_color === "string"
+                    ? v.progress_stroke_color
+                    : v.progress_stroke_color?.toHexString?.() ?? "",
                 });
                 commit({
                   title: v.title,
@@ -478,6 +554,103 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
           </Form.Item>
         </Space>
 
+        {/* Conditional KPI / Progress block. Visible only when the
+            currently-selected widget_type is one of these — keeps the
+            drawer tidy for chart-style widgets. ``Form.useWatch`` keeps
+            this in sync with the dropdown above without a re-save. */}
+        {(watchedType === "stat" || watchedType === "progress" || watchedType === "sparkline") && (
+          <>
+            <Divider orientation="left" style={{ marginTop: 4, fontSize: 13 }}>
+              {watchedType === "progress" ? "Настройки прогресса" : "Настройки KPI"}
+            </Divider>
+            <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 12 }}>
+              <Space wrap>
+                <Form.Item
+                  name="kpi_unit"
+                  label="Единица измерения"
+                  style={{ marginBottom: 0, width: 180 }}
+                  extra="Например: %, ms, шт"
+                >
+                  <Input maxLength={16} placeholder="—" />
+                </Form.Item>
+                <Form.Item
+                  name="kpi_precision"
+                  label="Знаков после запятой"
+                  style={{ marginBottom: 0, width: 160 }}
+                >
+                  <InputNumber min={0} max={4} style={{ width: "100%" }} />
+                </Form.Item>
+              </Space>
+
+              {watchedType === "stat" && (
+                <Space wrap>
+                  <Form.Item
+                    name="kpi_good_direction"
+                    label="«Хороший» тренд"
+                    style={{ marginBottom: 0, width: 220 }}
+                    extra="Какое направление считать улучшением — определяет цвет стрелки"
+                  >
+                    <Select
+                      options={[
+                        { value: "up", label: "Рост = хорошо (зелёный ↑)" },
+                        { value: "down", label: "Падение = хорошо (зелёный ↓)" },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="kpi_compare_baseline"
+                    label="Сравнивать с"
+                    style={{ marginBottom: 0, width: 220 }}
+                  >
+                    <Select
+                      options={[
+                        { value: "previous", label: "Предыдущим значением" },
+                        { value: "first", label: "Первым значением в ряду" },
+                      ]}
+                    />
+                  </Form.Item>
+                </Space>
+              )}
+
+              {watchedType === "progress" && (
+                <>
+                  <Space wrap>
+                    <Form.Item
+                      name="progress_target"
+                      label="Цель (target)"
+                      style={{ marginBottom: 0, width: 160 }}
+                      extra="Текущее / target × 100%"
+                    >
+                      <InputNumber min={1} step={1} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item
+                      name="progress_style"
+                      label="Стиль"
+                      style={{ marginBottom: 0, width: 180 }}
+                    >
+                      <Select
+                        options={[
+                          { value: "circle", label: "Кольцо" },
+                          { value: "dashboard", label: "Дашборд (полукруг)" },
+                          { value: "line", label: "Полоса" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Space>
+                  <Form.Item
+                    name="progress_stroke_color"
+                    label="Цвет полосы"
+                    style={{ marginBottom: 0 }}
+                    extra="Пусто = акцентный цвет темы"
+                  >
+                    <ColorPicker showText format="hex" />
+                  </Form.Item>
+                </>
+              )}
+            </Space>
+          </>
+        )}
+
         <Alert
           type="info"
           showIcon
@@ -487,10 +660,6 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
             <span>
               Любые параметры ApexCharts можно задать в JSON ниже — они накладываются
               поверх разумных значений по умолчанию.
-              <br />
-              Для <Typography.Text code>stat</Typography.Text> / <Typography.Text code>progress</Typography.Text>:{" "}
-              <Typography.Text code>unit</Typography.Text>, <Typography.Text code>target</Typography.Text>,{" "}
-              <Typography.Text code>precision</Typography.Text>, <Typography.Text code>goodDirection</Typography.Text>.
               <br />
               Для аннотаций:{" "}
               <Typography.Text code>{"{\"annotations\":{\"yaxis\":[{\"y\":100,\"label\":{\"text\":\"SLA\"}}]}}"}</Typography.Text>.
