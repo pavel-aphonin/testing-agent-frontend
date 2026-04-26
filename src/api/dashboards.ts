@@ -210,6 +210,13 @@ export async function deleteWidgetPackage(id: string): Promise<void> {
   await apiClient.delete(`/api/widget-packages/${id}`);
 }
 
+export async function publishWidgetPackage(
+  id: string,
+): Promise<WidgetPackageRead> {
+  const r = await apiClient.post(`/api/widget-packages/${id}/publish`);
+  return r.data;
+}
+
 /* ── Reorder (PER-15) ───────────────────────────────────────────── */
 
 export async function reorderWidgetTemplates(

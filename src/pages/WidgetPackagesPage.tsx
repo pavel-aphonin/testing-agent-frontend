@@ -29,6 +29,7 @@ import {
   deleteWidgetPackage,
   getWidgetPackageSource,
   listWidgetPackages,
+  publishWidgetPackage,
   reorderWidgetPackages,
   updateWidgetPackage,
 } from "@/api/dashboards";
@@ -281,6 +282,12 @@ function EditPackageDrawer({
   useEffect(() => {
     if (!open) return;
     if (isEdit && pkg) {
+      // Prefer the draft when present — that's what the author was
+      // editing last. Fall back to published HTML for fresh edits or
+      // packages without a draft buffer (PER-14).
+      const html = sourceQ.data?.draft_html_source
+        ?? sourceQ.data?.html_source
+        ?? "";
       form.setFieldsValue({
         code: pkg.code,
         name: pkg.name,
@@ -288,7 +295,7 @@ function EditPackageDrawer({
         icon: pkg.icon ?? "",
         version: pkg.version,
         manifest: JSON.stringify(pkg.manifest ?? {}, null, 2),
-        html_source: sourceQ.data?.html_source ?? "",
+        html_source: html,
         is_active: pkg.is_active,
       });
     } else {
@@ -354,10 +361,27 @@ function EditPackageDrawer({
 
   const m = isEdit ? updateM : createM;
 
+  const publishM = useMutation({
+    mutationFn: () => publishWidgetPackage(pkg!.id),
+    onSuccess: () => {
+      notify.success("Пакет опубликован — версия увеличена");
+      qc.invalidateQueries({ queryKey: ["widget-packages"] });
+      qc.invalidateQueries({ queryKey: ["widget-package-source"] });
+      onClose();
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
+
   const copyExample = () => {
     form.setFieldsValue({ html_source: EXAMPLE_PACKAGE_HTML });
     notify.success("Пример вставлен — редактируйте");
   };
+
+  // True when there's a saved draft different from the published copy.
+  // Drives the "Готов к публикации" badge and enables the Publish
+  // button. Computed from the source query, not the local form state —
+  // the form state can be ahead of saved data.
+  const hasDraft = Boolean(isEdit && sourceQ.data?.has_draft);
 
   return (
     <Drawer
@@ -368,6 +392,34 @@ function EditPackageDrawer({
       destroyOnHidden
       extra={
         <Space>
+          {isEdit && hasDraft && (
+            <Tag color="orange" style={{ margin: 0 }}>
+              есть черновик
+            </Tag>
+          )}
+          {isEdit && (
+            <Popconfirm
+              title="Опубликовать черновик?"
+              description={
+                <span>
+                  Виджеты, использующие этот пакет, начнут рендерить новую версию
+                  при следующем обновлении данных. Версия увеличится на patch.
+                </span>
+              }
+              okText="Опубликовать"
+              cancelText="Отмена"
+              disabled={!hasDraft || publishM.isPending}
+              onConfirm={() => publishM.mutate()}
+            >
+              <Button
+                type="default"
+                disabled={!hasDraft}
+                loading={publishM.isPending}
+              >
+                Опубликовать
+              </Button>
+            </Popconfirm>
+          )}
           <Button onClick={onClose}>Отмена</Button>
           <Button
             type="primary"

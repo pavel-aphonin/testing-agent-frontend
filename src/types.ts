@@ -523,7 +523,12 @@ export interface WidgetPackageSource {
   code: string;
   version: string;
   manifest: Record<string, unknown>;
+  /** Published HTML — this is what dashboards render. */
   html_source: string;
+  /** Work-in-progress edits, null when no draft exists. */
+  draft_html_source?: string | null;
+  /** True when draft exists and differs from html_source. */
+  has_draft?: boolean;
 }
 
 export interface WidgetPackageCreate {
@@ -543,7 +548,10 @@ export interface WidgetPackageUpdate {
   icon?: string | null;
   version?: string;
   manifest?: Record<string, unknown>;
+  /** Edits routed to the draft buffer by the backend. */
   html_source?: string;
+  /** Pass null to discard the current draft (revert to published). */
+  draft_html_source?: string | null;
   is_active?: boolean;
 }
 
