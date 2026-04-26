@@ -45,3 +45,34 @@ export async function deleteRun(id: string): Promise<void> {
 export async function cancelRun(id: string): Promise<void> {
   await apiClient.post(`/api/runs/${id}/cancel`);
 }
+
+/* ── Run diff (PER-27) ──────────────────────────────────────────── */
+
+export interface RunDiffPayload {
+  current_run_id: string;
+  baseline_run_id: string;
+  screens_added: { hash: string; name: string }[];
+  screens_removed: { hash: string; name: string }[];
+  edges_added: { source_hash: string; target_hash: string; action_type: string; success: boolean }[];
+  edges_removed: { source_hash: string; target_hash: string; action_type: string; success: boolean }[];
+  edges_changed: {
+    source_hash: string; target_hash: string; action_type: string;
+    old_success: boolean; new_success: boolean;
+  }[];
+  defects_new: { id: string; screen_name: string | null; priority: string; kind: string; title: string }[];
+  defects_resolved: { id: string; priority: string; kind: string; title: string }[];
+  defects_persisted: { id: string; priority: string; kind: string; title: string }[];
+  summary: Record<string, number>;
+  error?: string;
+}
+
+export async function getRunDiff(
+  currentId: string,
+  againstId: string,
+): Promise<RunDiffPayload> {
+  const r = await apiClient.get<RunDiffPayload>(
+    `/api/runs/${currentId}/diff`,
+    { params: { against: againstId } },
+  );
+  return r.data;
+}

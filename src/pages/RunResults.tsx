@@ -22,7 +22,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getRunResults } from "@/api/runs";
 import { AppSlots } from "@/components/AppSlots";
 import { DefectsPanel } from "@/components/DefectsPanel";
+import { RunDiff } from "@/components/RunDiff";
 import { RunTimeline } from "@/components/RunTimeline";
+import { useWorkspaceStore } from "@/store/workspace";
 import { PathFinder } from "@/components/graph/PathFinder";
 import { StateGraph } from "@/components/graph/StateGraph";
 import type { RunEdgeSummary, RunScreenSummary, RunStatus } from "@/types";
@@ -126,6 +128,9 @@ function buildMermaid(
 }
 
 export function RunResults() {
+  // Workspace context for the cross-run comparison baseline picker —
+  // we list candidate runs from the same workspace as the current view.
+  const currentWs = useWorkspaceStore((s) => s.current);
   const { t, i18n } = useTranslation();
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -342,6 +347,15 @@ export function RunResults() {
           style={{ marginBottom: 16 }}
         >
           <RunTimeline runId={runId} edges={filteredEdges} />
+        </Card>
+      )}
+
+      {/* Cross-run comparison (PER-27). Behind a "load on demand"
+          baseline picker — diff scans the full screen+edge+defect
+          tables for both runs, can be heavy on long runs. */}
+      {runId && (
+        <Card title="Сравнение с другим запуском" size="small" style={{ marginBottom: 16 }}>
+          <RunDiff runId={runId} workspaceId={currentWs?.id ?? null} />
         </Card>
       )}
 
