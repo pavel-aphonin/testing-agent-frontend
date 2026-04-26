@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import {
   createWidgetTemplate,
   listDatasources,
+  listWidgetPackages,
   updateWidget,
 } from "@/api/dashboards";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -169,6 +170,15 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
     staleTime: 10 * 60_000,
   });
 
+  // Custom-widget packages of the workspace, only active ones — used
+  // by the package picker that appears when widget_type === "custom".
+  const pkgQ = useQuery({
+    queryKey: ["widget-packages", ws?.id ?? "none", "active-only"],
+    queryFn: () => (ws ? listWidgetPackages(ws.id, true) : Promise.resolve([])),
+    enabled: Boolean(ws),
+    staleTime: 60_000,
+  });
+
   // Bucket datasources by group key so the Select can render them as
   // ``<optgroup>``s. Same order as the groups list from the backend.
   const grouped = (() => {
@@ -239,6 +249,10 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
         progress_target: opts?.target ?? 100,
         progress_style: opts?.style ?? "circle",
         progress_stroke_color: opts?.strokeColor ?? "",
+        // Custom widget package id — surfaced as a Select instead of
+        // raw JSON so users don't have to copy UUIDs from the packages
+        // page. Stored top-level in chart_options.package_id.
+        custom_package_id: opts?.package_id ?? "",
       });
     }
   }, [widget, form]);
@@ -266,6 +280,7 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
       progress_target?: number;
       progress_style?: "line" | "circle" | "dashboard";
       progress_stroke_color?: string;
+      custom_package_id?: string;
     },
   ) => {
     const out: any = { ...rawOpts };
@@ -303,6 +318,15 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
       if (quick.widget_type === "stat") {
         if (quick.kpi_good_direction) out.goodDirection = quick.kpi_good_direction;
         if (quick.kpi_compare_baseline) out.compareBaseline = quick.kpi_compare_baseline;
+      }
+    }
+
+    // Custom widget — package_id selection from the dropdown.
+    if (quick.widget_type === "custom") {
+      if (quick.custom_package_id && quick.custom_package_id.trim()) {
+        out.package_id = quick.custom_package_id.trim();
+      } else {
+        delete out.package_id;
       }
     }
 
@@ -430,6 +454,7 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
                   progress_stroke_color: typeof v.progress_stroke_color === "string"
                     ? v.progress_stroke_color
                     : v.progress_stroke_color?.toHexString?.() ?? "",
+                  custom_package_id: v.custom_package_id,
                 });
                 commit({
                   title: v.title,
@@ -553,6 +578,69 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
             <Input placeholder="/runs или https://…" allowClear />
           </Form.Item>
         </Space>
+
+        {/* Conditional Custom-widget package picker. Replaces the manual
+            "{\"package_id\": \"<UUID>\"}" trick in raw chart_options JSON.
+            Pulls active packages of the workspace via ``listWidgetPackages``
+            with only_active=true; disabled packages are still respected
+            if a widget already references them. */}
+        {watchedType === "custom" && (
+          <>
+            <Divider orientation="left" style={{ marginTop: 4, fontSize: 13 }}>
+              Пакет виджета
+            </Divider>
+            <Form.Item
+              name="custom_package_id"
+              label="Какой пакет рендерить"
+              style={{ marginBottom: 12 }}
+              extra={
+                pkgQ.data && pkgQ.data.length === 0 ? (
+                  <span>
+                    В пространстве ещё нет активных пакетов.{" "}
+                    <a
+                      href="/widget-packages"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Создать на странице «Пакеты виджетов»
+                    </a>
+                  </span>
+                ) : (
+                  "Выберите HTML-пакет, который будет рендериться внутри iframe этого виджета."
+                )
+              }
+            >
+              <Select
+                allowClear
+                showSearch
+                loading={pkgQ.isLoading}
+                placeholder="Выберите пакет"
+                options={(pkgQ.data ?? []).map((p) => ({
+                  value: p.id,
+                  label: (
+                    <span>
+                      {p.icon ?? "🧩"} {p.name}
+                      <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                        v{p.version} · {p.code}
+                      </Typography.Text>
+                    </span>
+                  ),
+                }))}
+                filterOption={(input, option) => {
+                  const value = (option as { value?: string } | undefined)?.value;
+                  if (!value) return false;
+                  const meta = (pkgQ.data ?? []).find((p) => p.id === value);
+                  if (!meta) return false;
+                  const q = input.toLowerCase();
+                  return (
+                    meta.name.toLowerCase().includes(q) ||
+                    meta.code.toLowerCase().includes(q)
+                  );
+                }}
+              />
+            </Form.Item>
+          </>
+        )}
 
         {/* Conditional KPI / Progress block. Visible only when the
             currently-selected widget_type is one of these — keeps the
