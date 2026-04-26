@@ -59,6 +59,92 @@ const TABULAR: WidgetType[] = ["table"];
 // Custom packages handle their own shape — treat as "any", no warning
 // on source switches.
 
+// Widget types where the annotation editor (PER-11) doesn't make
+// sense — they don't render an Apex axis to overlay lines onto.
+const ANNO_HIDDEN_TYPES = new Set<string>([
+  "stat", "progress", "table", "custom",
+  // Pie-family also has no axes; skip there too.
+  "pie", "donut", "polarArea", "radialBar", "funnel",
+]);
+
+/** Apex annotations.{xaxis,yaxis} → flat row list for the Form.List
+ *  editor. Numeric values become numbers; strings (dates, categories)
+ *  pass through. */
+function extractAnnotations(
+  apex: { xaxis?: any[]; yaxis?: any[] } | undefined,
+): { axis: "y" | "x"; value: string; label: string; color: string }[] {
+  if (!apex) return [];
+  const out: { axis: "y" | "x"; value: string; label: string; color: string }[] = [];
+  for (const a of apex.yaxis ?? []) {
+    out.push({
+      axis: "y",
+      value: String(a?.y ?? ""),
+      label: String(a?.label?.text ?? ""),
+      color: a?.borderColor ?? "#ff4d4f",
+    });
+  }
+  for (const a of apex.xaxis ?? []) {
+    out.push({
+      axis: "x",
+      value: String(a?.x ?? ""),
+      label: String(a?.label?.text ?? ""),
+      color: a?.borderColor ?? "#1677ff",
+    });
+  }
+  return out;
+}
+
+/** Flat row list → Apex annotations.{xaxis,yaxis} shape. Returns
+ *  ``undefined`` when there's nothing to write so the caller can
+ *  ``delete`` the field instead of leaving an empty container. */
+function packAnnotations(
+  rows: { axis: "y" | "x"; value: string; label: string; color: string }[],
+): { xaxis?: any[]; yaxis?: any[] } | undefined {
+  const yaxis: any[] = [];
+  const xaxis: any[] = [];
+  for (const r of rows) {
+    const value = (r?.value ?? "").trim();
+    if (!value) continue;
+    const label = (r?.label ?? "").trim();
+    const color = r?.color || (r.axis === "y" ? "#ff4d4f" : "#1677ff");
+    const numeric = Number(value);
+    const yval = !Number.isNaN(numeric) && /^-?\d/.test(value) ? numeric : value;
+    if (r.axis === "y") {
+      yaxis.push({
+        y: yval,
+        borderColor: color,
+        strokeDashArray: 4,
+        label: label
+          ? {
+              text: label,
+              borderColor: color,
+              style: { color: "#fff", background: color, fontSize: "11px" },
+            }
+          : undefined,
+      });
+    } else {
+      xaxis.push({
+        x: yval,
+        borderColor: color,
+        strokeDashArray: 4,
+        label: label
+          ? {
+              text: label,
+              borderColor: color,
+              orientation: "horizontal",
+              style: { color: "#fff", background: color, fontSize: "11px" },
+            }
+          : undefined,
+      });
+    }
+  }
+  if (!yaxis.length && !xaxis.length) return undefined;
+  const out: { xaxis?: any[]; yaxis?: any[] } = {};
+  if (yaxis.length) out.yaxis = yaxis;
+  if (xaxis.length) out.xaxis = xaxis;
+  return out;
+}
+
 const WIDGET_LABELS: Record<WidgetType, string> = {
   stat: "KPI / число",
   progress: "Прогресс",
@@ -224,6 +310,12 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
   // toggling type → save was the only way to reveal those fields.
   const watchedType = Form.useWatch("widget_type", form);
 
+  // Annotations (PER-11) — extracted as a flat list of editable rows so
+  // we can render them as a Form.List instead of asking the user to
+  // hand-write Apex's nested annotations.yaxis schema. Mapped to/from
+  // chart_options.annotations on submit.
+  type AnnoRow = { axis: "y" | "x"; value: string; label: string; color: string };
+
   useEffect(() => {
     if (widget) {
       const opts = (widget.chart_options ?? {}) as any;
@@ -253,6 +345,9 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
         // raw JSON so users don't have to copy UUIDs from the packages
         // page. Stored top-level in chart_options.package_id.
         custom_package_id: opts?.package_id ?? "",
+        // Annotations: flatten the Apex shape into [{axis, value, label, color}]
+        // for the Form.List editor; merged back on save by mergeQuickOptions.
+        annotations: extractAnnotations(opts?.annotations),
       });
     }
   }, [widget, form]);
@@ -281,6 +376,7 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
       progress_style?: "line" | "circle" | "dashboard";
       progress_stroke_color?: string;
       custom_package_id?: string;
+      annotations?: AnnoRow[];
     },
   ) => {
     const out: any = { ...rawOpts };
@@ -319,6 +415,16 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
         if (quick.kpi_good_direction) out.goodDirection = quick.kpi_good_direction;
         if (quick.kpi_compare_baseline) out.compareBaseline = quick.kpi_compare_baseline;
       }
+    }
+
+    // Annotations (PER-11): pack the flat row list back into Apex's
+    // nested annotations.{xaxis,yaxis} shape. Empty rows are dropped.
+    // ``undefined`` annotations field means "user didn't open the
+    // editor" — leave whatever's already in chart_options untouched.
+    if (Array.isArray(quick.annotations)) {
+      const packed = packAnnotations(quick.annotations);
+      if (packed) out.annotations = packed;
+      else delete out.annotations;
     }
 
     // Custom widget — package_id selection from the dropdown.
@@ -455,6 +561,14 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
                     ? v.progress_stroke_color
                     : v.progress_stroke_color?.toHexString?.() ?? "",
                   custom_package_id: v.custom_package_id,
+                  annotations: (v.annotations ?? []).map((a: any) => ({
+                    axis: a?.axis ?? "y",
+                    value: String(a?.value ?? ""),
+                    label: String(a?.label ?? ""),
+                    color: typeof a?.color === "string"
+                      ? a.color
+                      : a?.color?.toHexString?.() ?? "",
+                  })),
                 });
                 commit({
                   title: v.title,
@@ -584,6 +698,81 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
             <Input placeholder="/runs или https://…" allowClear />
           </Form.Item>
         </Space>
+
+        {/* Annotations editor (PER-11). Form.List of {axis, value, label,
+            color} rows that get packed into Apex's annotations.{xaxis,yaxis}
+            on save. Hidden for native widgets that don't render Apex —
+            no point editing line annotations on a Stat or a Table.
+            chart_options.annotations from raw JSON keeps working as a
+            power-user override; empty rows are dropped, non-empty rows
+            override the matching axis/value pair. */}
+        {!ANNO_HIDDEN_TYPES.has(watchedType ?? "") && (
+          <>
+            <Divider orientation="left" style={{ marginTop: 4, fontSize: 13 }}>
+              Аннотации (пороги, цели)
+            </Divider>
+            <Form.List name="annotations">
+              {(fields, { add, remove }) => (
+                <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 12 }}>
+                  {fields.map((field) => (
+                    <Space key={field.key} align="baseline" wrap>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "axis"]}
+                        style={{ marginBottom: 0, width: 80 }}
+                      >
+                        <Select
+                          options={[
+                            { value: "y", label: "Y" },
+                            { value: "x", label: "X" },
+                          ]}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "value"]}
+                        style={{ marginBottom: 0, width: 120 }}
+                      >
+                        <Input placeholder="100 или 2026-04-25" />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "label"]}
+                        style={{ marginBottom: 0, width: 180 }}
+                      >
+                        <Input placeholder="Подпись (SLA)" />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "color"]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <ColorPicker showText={false} format="hex" />
+                      </Form.Item>
+                      <Button size="small" type="text" danger onClick={() => remove(field.name)}>
+                        Удалить
+                      </Button>
+                    </Space>
+                  ))}
+                  <Space>
+                    <Button
+                      size="small"
+                      onClick={() => add({ axis: "y", value: "", label: "", color: "#ff4d4f" })}
+                    >
+                      + Горизонтальная (Y)
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => add({ axis: "x", value: "", label: "", color: "#1677ff" })}
+                    >
+                      + Вертикальная (X)
+                    </Button>
+                  </Space>
+                </Space>
+              )}
+            </Form.List>
+          </>
+        )}
 
         {/* Conditional Custom-widget package picker. Replaces the manual
             "{\"package_id\": \"<UUID>\"}" trick in raw chart_options JSON.
