@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Collapse, Form, Input, InputNumber, Modal, Select, Switch, Tag, Upload } from "antd";
+import { Collapse, Form, Input, InputNumber, Modal, Select, Switch, Tag, Typography, Upload } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -197,26 +197,52 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
               {uploadResult.platform === "ios" ? "iOS" : "Android"})
             </Tag>
           ) : (
-            <Upload.Dragger
-              accept=""
-              showUploadList={false}
-              beforeUpload={(file) => {
-                setUploadStatus("uploading");
-                setUploadResult(null);
-                uploadMutation.mutate(file);
-                return false; // prevent AntD's default upload behaviour
-              }}
-              disabled={uploadStatus === "uploading"}
-            >
-              <p className="ant-upload-drag-icon">
-                <InboxOutlined />
-              </p>
-              <p className="ant-upload-text">
-                {uploadStatus === "uploading"
-                  ? t("newRunModal.uploadingApp")
-                  : t("newRunModal.uploadAppHelp")}
-              </p>
-            </Upload.Dragger>
+            <>
+              <Upload.Dragger
+                // PER-46: backend (app/api/app_uploads.py) only accepts
+                // .zip / .ipa / .apk. The MIME alternatives are for
+                // macOS Safari which sometimes hands back octet-stream
+                // for opaque archive types. The picker still does the
+                // primary filtering by extension.
+                accept=".zip,.ipa,.apk,application/zip,application/octet-stream"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  // PER-46: extension validation BEFORE we ping the
+                  // backend — gives the user a clear toast instead of
+                  // a 400 from the server. ``Upload.LIST_IGNORE``
+                  // keeps the file out of AntD's internal list.
+                  const name = file.name.toLowerCase();
+                  const ok = name.endsWith(".zip") || name.endsWith(".ipa") || name.endsWith(".apk");
+                  if (!ok) {
+                    const ext = name.includes(".")
+                      ? name.slice(name.lastIndexOf("."))
+                      : name;
+                    notify.error(t("newRunModal.uploadAppUnsupportedFormat", { ext }));
+                    return Upload.LIST_IGNORE;
+                  }
+                  setUploadStatus("uploading");
+                  setUploadResult(null);
+                  uploadMutation.mutate(file);
+                  return false; // prevent AntD's default upload behaviour
+                }}
+                disabled={uploadStatus === "uploading"}
+              >
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p className="ant-upload-text">
+                  {uploadStatus === "uploading"
+                    ? t("newRunModal.uploadingApp")
+                    : t("newRunModal.uploadAppHelp")}
+                </p>
+              </Upload.Dragger>
+              <Typography.Text
+                type="secondary"
+                style={{ fontSize: 12, display: "block", marginTop: 4 }}
+              >
+                {t("newRunModal.uploadAppFormatsHint")}
+              </Typography.Text>
+            </>
           )}
         </Form.Item>
 

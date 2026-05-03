@@ -1,5 +1,6 @@
 import { Button, List, Tag, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type { RunStatus } from "@/types";
@@ -64,6 +65,7 @@ interface Props {
  *    don't yank them back.
  */
 export function EventsTimeline({ events, language, autoScroll = true, emptyText }: Props) {
+  const { t } = useTranslation();
   // How many of the most recent events to show. We keep an offset from the
   // END of the array (so when new live events arrive, the offset stays
   // anchored to "the latest").
@@ -118,7 +120,7 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
             type="link"
             onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
           >
-            ↑ Посмотреть предыдущие ({renderableEvents.length - visibleCount} событий)
+            {t("events.loadPrevious", { count: renderableEvents.length - visibleCount })}
           </Button>
         </div>
       )}
@@ -128,23 +130,29 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
         atBottomStateChange={(atBottom) => {
           atBottomRef.current = atBottom;
         }}
-        itemContent={(_, e) => <EventRow event={e} language={language} />}
+        itemContent={(_, e) => <EventRow event={e} language={language} t={t} />}
         style={{ flex: 1, minHeight: 0 }}
       />
     </div>
   );
 }
 
-function EventRow({ event, language }: { event: TimelineEvent; language: string }) {
+function EventRow({
+  event, language, t,
+}: {
+  event: TimelineEvent;
+  language: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
   const time = fmtTime(event.timestamp, language);
   return (
     <List.Item style={{ padding: "8px 12px", borderBottom: "1px solid #fafafa" }}>
       <div style={{ width: "100%" }}>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          {time} · шаг {event.step_idx ?? 0}
+          {time} · {t("events.stepLabel", { idx: event.step_idx ?? 0 })}
         </Typography.Text>
         <br />
-        <EventLine event={event} />
+        <EventLine event={event} t={t} />
       </div>
     </List.Item>
   );
@@ -157,63 +165,70 @@ function fmtTime(iso: string | null | undefined, lang: string): string {
   return d.toLocaleTimeString();
 }
 
-function EventLine({ event }: { event: TimelineEvent }) {
+function EventLine({
+  event, t,
+}: {
+  event: TimelineEvent;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
   switch (event.type) {
-    case "status_change":
+    case "status_change": {
+      // PER-45: was inline ternary on Russian strings — now driven by
+      // i18n so the language switcher reaches the live log too.
+      const statusKey = event.new_status as RunStatus | undefined;
+      const label = statusKey && ["running", "completed", "failed", "cancelled"].includes(statusKey)
+        ? t(`events.status.${statusKey}`)
+        : (event.new_status ?? "");
       return (
         <span>
-          <Tag color={STATUS_COLOR[event.new_status as RunStatus]}>
-            {event.new_status === "running"
-              ? "▶ Исследование начато"
-              : event.new_status === "completed"
-              ? "✓ Исследование завершено"
-              : event.new_status === "failed"
-              ? "✗ Ошибка"
-              : event.new_status === "cancelled"
-              ? "■ Отменено"
-              : event.new_status}
-          </Tag>
+          <Tag color={STATUS_COLOR[event.new_status as RunStatus]}>{label}</Tag>
         </span>
       );
+    }
     case "screen_discovered": {
       // Only emit a UI line for genuinely new screens.
       if (event.is_new === false) return null;
-      return (
-        <span>
-          🔍 Обнаружил новый экран: <strong>«{event.screen_name}»</strong>
-        </span>
-      );
+      return <span>{t("events.screenDiscovered", { name: event.screen_name })}</span>;
     }
     case "edge_discovered": {
       const details = event.action_details ?? {};
       const label = details.element || undefined;
       const value = details.value || undefined;
       const moved = event.source_screen_hash !== event.target_screen_hash;
+      const transition = moved ? ` ${t("events.actions.transition")}` : "";
 
       if (event.action_type === "input") {
         const truncated =
           value && value.length > 40 ? value.slice(0, 37) + "…" : value;
         return (
           <span>
-            ✏️ Ввожу {truncated ? <code>«{truncated}»</code> : "данные"}
-            {label ? <> в поле <strong>«{label}»</strong></> : " в текстовое поле"}
-            {moved ? " → перешёл на другой экран" : ""}
+            {t("events.actions.input")}{" "}
+            {truncated
+              ? <code>«{truncated}»</code>
+              : t("events.actions.fallbackInputValue")}
+            {label
+              ? <> {t("events.actions.inputTo")} <strong>«{label}»</strong></>
+              : ` ${t("events.actions.fallbackInputField")}`}
+            {transition}
           </span>
         );
       }
       if (event.action_type === "tap") {
         return (
           <span>
-            👆 Нажимаю {label ? <strong>«{label}»</strong> : "элемент"}
-            {moved ? " → перешёл на другой экран" : ""}
+            {t("events.actions.tap")}{" "}
+            {label
+              ? <strong>«{label}»</strong>
+              : t("events.actions.fallbackTapLabel")}
+            {transition}
           </span>
         );
       }
       if (event.action_type === "swipe") {
         return (
           <span>
-            👉 Свайп{value ? ` ${value}` : ""}
-            {label ? <> на <strong>«{label}»</strong></> : ""}
+            {t("events.actions.swipe")}{value ? ` ${value}` : ""}
+            {label ? <> {t("events.actions.swipeOn")} <strong>«{label}»</strong></> : ""}
           </span>
         );
       }
@@ -221,7 +236,7 @@ function EventLine({ event }: { event: TimelineEvent }) {
         <span>
           {event.action_type} {label ? <strong>«{label}»</strong> : ""}
           {value ? <code> «{value}»</code> : ""}
-          {moved ? " → переход" : ""}
+          {moved ? ` ${t("events.actions.transitionGeneric")}` : ""}
         </span>
       );
     }
@@ -230,7 +245,7 @@ function EventLine({ event }: { event: TimelineEvent }) {
     case "error":
       return (
         <span style={{ color: "#cf1322" }}>
-          ⚠ {event.message ?? "Ошибка"}
+          ⚠ {event.message ?? t("events.errorFallback")}
         </span>
       );
   }

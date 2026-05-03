@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { BootProgress } from "@/components/BootProgress";
 import { EventsTimeline, type TimelineEvent } from "@/components/EventsTimeline";
 import { LiveMirror } from "@/components/LiveMirror";
 import { useAuthStore } from "@/store/auth";
@@ -385,6 +386,11 @@ export function RunProgress() {
           </Descriptions>
         </Card>
       )}
+
+      {/* PER-44: visual stepper for the simulator-boot phase. Hidden
+          automatically once exploration starts (any event with
+          step_idx > 0) or the run reaches a terminal state. */}
+      <BootProgress events={timelineEvents} status={currentStatus} />
 
       <Row gutter={16}>
         {/* Left column: stats + screens + live events */}

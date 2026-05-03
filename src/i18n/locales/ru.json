@@ -95,6 +95,8 @@
     "deviceIdRequired": "ID устройства обязателен",
     "uploadApp": "Загрузить сборку",
     "uploadAppHelp": "Перетащите сюда .app.zip, .ipa или .apk файл",
+    "uploadAppFormatsHint": "Поддерживаются: .app.zip / .ipa (iOS), .apk (Android)",
+    "uploadAppUnsupportedFormat": "Неподдерживаемый формат «{{ext}}». Загрузите .app.zip, .ipa или .apk.",
     "uploadingApp": "Загрузка\u2026",
     "uploadSuccess": "Приложение определено: {{bundleId}}",
     "uploadFailed": "Загрузка не удалась",
@@ -106,6 +108,39 @@
   "liveMirror": {
     "title": "Симулятор в реальном времени",
     "waiting": "Жду пока воркер начнёт захват симулятора…"
+  },
+  "events": {
+    "stepLabel": "шаг {{idx}}",
+    "loadPrevious": "↑ Посмотреть предыдущие ({{count}} событий)",
+    "status": {
+      "running": "▶ Исследование начато",
+      "completed": "✓ Исследование завершено",
+      "failed": "✗ Ошибка",
+      "cancelled": "■ Отменено"
+    },
+    "screenDiscovered": "🔍 Обнаружил новый экран: «{{name}}»",
+    "actions": {
+      "input": "✏️ Ввожу",
+      "tap": "👆 Нажимаю",
+      "swipe": "👉 Свайп",
+      "fallbackInputValue": "данные",
+      "fallbackInputField": "в текстовое поле",
+      "fallbackTapLabel": "элемент",
+      "inputTo": "в поле",
+      "swipeOn": "на",
+      "transition": "→ перешёл на другой экран",
+      "transitionGeneric": "→ переход"
+    },
+    "errorFallback": "Ошибка"
+  },
+  "bootProgress": {
+    "title": "Запуск симулятора",
+    "steps": {
+      "creating": "Создание симулятора",
+      "booting": "Загрузка ОС",
+      "installing": "Установка приложения",
+      "launching": "Запуск приложения"
+    }
   },
   "runProgress": {
     "title": "Прогресс запуска",

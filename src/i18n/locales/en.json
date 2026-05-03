@@ -95,6 +95,8 @@
     "deviceIdRequired": "Device ID is required",
     "uploadApp": "Upload app build",
     "uploadAppHelp": "Drag a .app.zip, .ipa, or .apk file here",
+    "uploadAppFormatsHint": "Supported: .app.zip / .ipa (iOS), .apk (Android)",
+    "uploadAppUnsupportedFormat": "Unsupported format \"{{ext}}\". Upload .app.zip, .ipa, or .apk.",
     "uploadingApp": "Uploading\u2026",
     "uploadSuccess": "App detected: {{bundleId}}",
     "uploadFailed": "Upload failed",
@@ -106,6 +108,15 @@
   "liveMirror": {
     "title": "Live simulator",
     "waiting": "Waiting for the worker to start the simulator capture…"
+  },
+  "bootProgress": {
+    "title": "Simulator startup",
+    "steps": {
+      "creating": "Creating simulator",
+      "booting": "Booting OS",
+      "installing": "Installing app",
+      "launching": "Launching app"
+    }
   },
   "runProgress": {
     "title": "Run progress",
@@ -126,6 +137,30 @@
     "noRunId": "No run ID in the URL",
     "realRun": "Real device",
     "syntheticRun": "Synthetic"
+  },
+  "events": {
+    "stepLabel": "step {{idx}}",
+    "loadPrevious": "↑ Show previous ({{count}} events)",
+    "status": {
+      "running": "▶ Exploration started",
+      "completed": "✓ Exploration finished",
+      "failed": "✗ Error",
+      "cancelled": "■ Cancelled"
+    },
+    "screenDiscovered": "🔍 Discovered a new screen: \"{{name}}\"",
+    "actions": {
+      "input": "✏️ Typing",
+      "tap": "👆 Tapping",
+      "swipe": "👉 Swipe",
+      "fallbackInputValue": "data",
+      "fallbackInputField": "into text field",
+      "fallbackTapLabel": "element",
+      "inputTo": "into field",
+      "swipeOn": "on",
+      "transition": "→ moved to another screen",
+      "transitionGeneric": "→ transition"
+    },
+    "errorFallback": "Error"
   },
   "graph": {
     "visits": "visits: {{count}}",
