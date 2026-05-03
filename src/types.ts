@@ -754,6 +754,9 @@ export interface Run {
   // V2 auto-provisioning fields
   device_type: string | null;
   os_version: string | null;
+  // PER-40 / PER-41: replay metadata. NULL on regular runs.
+  replay_of?: string | null;
+  started_from_screen_hash?: string | null;
   app_file_path: string | null;
 }
 

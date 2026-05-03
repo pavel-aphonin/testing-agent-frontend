@@ -24,6 +24,7 @@ import { AppSlots } from "@/components/AppSlots";
 import { DefectsPanel } from "@/components/DefectsPanel";
 import { RunDiff } from "@/components/RunDiff";
 import { RunTimeline } from "@/components/RunTimeline";
+import { StartFromScreenModal } from "@/components/StartFromScreenModal";
 import { useWorkspaceStore } from "@/store/workspace";
 import { PathFinder } from "@/components/graph/PathFinder";
 import { StateGraph } from "@/components/graph/StateGraph";
@@ -135,6 +136,9 @@ export function RunResults() {
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [edgeFilter, setEdgeFilter] = useState<"all" | "success" | "failed">("all");
+  // PER-41: when set, the StartFromScreenModal opens for this hash.
+  // Cleared on close — see modal's onClose.
+  const [startFromHash, setStartFromHash] = useState<string | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["run-results", runId],
@@ -266,6 +270,37 @@ export function RunResults() {
       </Space>
 
       {/* Run info — human-readable, Russian labels */}
+      {/* PER-40 / PER-41: provenance banner for replay / start-from
+          runs so reviewers know "this isn't a fresh exploration". */}
+      {(run.replay_of || run.started_from_screen_hash) && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            run.started_from_screen_hash ? (
+              <span>
+                Запуск стартует с экрана{" "}
+                <Typography.Text code>
+                  {run.started_from_screen_hash.slice(0, 12)}…
+                </Typography.Text>
+                {" из run-а "}
+                <a onClick={() => navigate(`/runs/${run.replay_of}/results`)}>
+                  {String(run.replay_of).slice(0, 8)}
+                </a>
+              </span>
+            ) : (
+              <span>
+                Replay run-а{" "}
+                <a onClick={() => navigate(`/runs/${run.replay_of}/results`)}>
+                  {String(run.replay_of).slice(0, 8)}
+                </a>
+              </span>
+            )
+          }
+        />
+      )}
+
       <Card style={{ marginBottom: 16 }}>
         <Descriptions column={3} size="small">
           <Descriptions.Item label={t("runProgress.bundle")}>{run.bundle_id}</Descriptions.Item>
@@ -361,7 +396,7 @@ export function RunResults() {
 
       {screens.length > 1 && (
         <div style={{ marginBottom: 16 }}>
-          <PathFinder screens={screens} edges={edges} />
+          <PathFinder screens={screens} edges={edges} runId={runId} />
         </div>
       )}
 
@@ -381,7 +416,17 @@ export function RunResults() {
         }
         styles={{ body: { padding: 0 } }}
       >
-        <StateGraph screens={screens} edges={edges} height={520} runId={runId} />
+        <StateGraph
+          screens={screens}
+          edges={edges}
+          height={520}
+          runId={runId}
+          contextMenuItems={runId ? [{
+            key: "start-from-here",
+            label: "🚀 Стартовать новый run отсюда",
+            onClick: (hash) => setStartFromHash(hash),
+          }] : []}
+        />
       </Card>
 
       <Row gutter={16}>
@@ -413,6 +458,19 @@ export function RunResults() {
           </Card>
         </Col>
       </Row>
+
+      {/* PER-41: triggered by graph context-menu "Стартовать новый
+          run отсюда". Modal lives at this level (not inside StateGraph)
+          because it needs runId + redirect navigation. */}
+      {runId && (
+        <StartFromScreenModal
+          open={startFromHash !== null}
+          sourceRunId={runId}
+          screenHash={startFromHash}
+          defaultMode={run.mode}
+          onClose={() => setStartFromHash(null)}
+        />
+      )}
     </>
   );
 }

@@ -107,3 +107,43 @@ export async function getRunDiff(
   );
   return r.data;
 }
+
+/* ── Replay / start-from-screen (PER-40 / PER-41) ─────────────── */
+
+export interface ReplayPathRequest {
+  edge_ids: number[];
+  app_file_id?: string | null;
+  device_config_id?: string | null;
+  mode?: string | null;
+  continue_after_replay?: boolean;
+}
+
+export async function replayPath(
+  sourceRunId: string,
+  payload: ReplayPathRequest,
+): Promise<Run> {
+  const r = await apiClient.post<Run>(
+    `/api/runs/${sourceRunId}/replay-path`,
+    payload,
+  );
+  return r.data;
+}
+
+export interface StartFromScreenRequest {
+  target_screen_hash: string;
+  max_steps?: number;
+  mode?: string | null;
+  app_file_id?: string | null;
+  device_config_id?: string | null;
+}
+
+export async function startFromScreen(
+  sourceRunId: string,
+  payload: StartFromScreenRequest,
+): Promise<Run> {
+  const r = await apiClient.post<Run>(
+    `/api/runs/${sourceRunId}/start-from-screen`,
+    payload,
+  );
+  return r.data;
+}

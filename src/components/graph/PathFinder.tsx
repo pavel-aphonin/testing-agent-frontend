@@ -1,12 +1,20 @@
-import { ArrowRightOutlined, NodeIndexOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Empty, Select, Space, Tag, Typography } from "antd";
+import { ArrowRightOutlined, NodeIndexOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { useMutation } from "@tanstack/react-query";
+import { Alert, Button, Card, Checkbox, Empty, Modal, Select, Space, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { replayPath } from "@/api/runs";
 import type { RunEdgeSummary, RunScreenSummary } from "@/types";
+import { notify } from "@/utils/notify";
 
 interface Props {
   screens: RunScreenSummary[];
   edges: RunEdgeSummary[];
+  /** PER-40: when provided, enables the "Replay" button that creates
+   *  a new run replaying the found path. Without runId the path
+   *  finder stays read-only. */
+  runId?: string;
 }
 
 /**
@@ -19,9 +27,26 @@ interface Props {
  * multiple edges connect the same pair, we keep the first found — the user
  * doesn't care about parallel transitions for navigation.
  */
-export function PathFinder({ screens, edges }: Props) {
+export function PathFinder({ screens, edges, runId }: Props) {
   const [from, setFrom] = useState<string | undefined>();
   const [to, setTo] = useState<string | undefined>();
+  const [replayModalOpen, setReplayModalOpen] = useState(false);
+  const [continueAfter, setContinueAfter] = useState(false);
+  const nav = useNavigate();
+
+  const replayM = useMutation({
+    mutationFn: ({ edgeIds, continueAfterReplay }: { edgeIds: number[]; continueAfterReplay: boolean }) =>
+      replayPath(runId!, {
+        edge_ids: edgeIds,
+        continue_after_replay: continueAfterReplay,
+      }),
+    onSuccess: (created) => {
+      notify.success("Replay run создан");
+      setReplayModalOpen(false);
+      nav(`/runs/${created.id}/progress`);
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.detail ?? "Ошибка"),
+  });
 
   // Map hash → screen for quick label lookup.
   const screenByHash = useMemo(() => {
@@ -101,8 +126,59 @@ export function PathFinder({ screens, edges }: Props) {
       ) : path === null ? (
         <Empty description={`Прямой путь от «${screenByHash.get(from)?.name}» к «${screenByHash.get(to)?.name}» не найден`} />
       ) : (
-        <PathView path={path} screenByHash={screenByHash} />
+        <>
+          <PathView path={path} screenByHash={screenByHash} />
+          {runId && path.length > 0 && (
+            <div style={{ marginTop: 12, textAlign: "right" }}>
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={() => setReplayModalOpen(true)}
+                loading={replayM.isPending}
+              >
+                Replay этот путь
+              </Button>
+            </div>
+          )}
+        </>
       )}
+
+      {/* PER-40: replay confirmation modal — explicit "stop after
+          replay" / "continue with exploration" choice so the user
+          knows whether the new run will be a 4-step regression
+          check or a full exploration anchored on the path's end. */}
+      <Modal
+        open={replayModalOpen}
+        title="Запустить replay"
+        onCancel={() => setReplayModalOpen(false)}
+        onOk={() => {
+          if (!path) return;
+          replayM.mutate({
+            edgeIds: path.map((p) => p.edge.id),
+            continueAfterReplay: continueAfter,
+          });
+        }}
+        okText="Запустить"
+        cancelText="Отмена"
+        confirmLoading={replayM.isPending}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          Создаётся новый run, который проиграет {path?.length ?? 0}{" "}
+          сохранённых действий из этого графа. Приложение, устройство и
+          режим — те же, что были у исходного run-а.
+        </Typography.Paragraph>
+        <Checkbox
+          checked={continueAfter}
+          onChange={(e) => setContinueAfter(e.target.checked)}
+        >
+          Продолжить свободное исследование после replay
+        </Checkbox>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
+          Если выключено — run остановится сразу после проигрывания пути
+          (полезно для проверки «исправлен ли баг в новой сборке»).
+        </Typography.Paragraph>
+      </Modal>
     </Card>
   );
 }
