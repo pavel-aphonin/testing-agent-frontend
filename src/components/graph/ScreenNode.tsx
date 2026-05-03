@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Image } from "antd";
 
 import { apiClient } from "@/api/client";
+import type { NodeOverlayStyle } from "@/types";
 
 /** Data payload carried by each screen node. */
 export interface ScreenNodeData {
@@ -11,6 +12,10 @@ export interface ScreenNodeData {
   screenIdHash: string;
   hasScreenshot: boolean;
   runId?: string;
+  /** PER-39: optional visual override from the active data overlay
+   *  (defects / spec / visits / diff). When undefined the node
+   *  renders with the built-in neutral palette. */
+  overlay?: NodeOverlayStyle;
   [key: string]: unknown;
 }
 
@@ -18,7 +23,7 @@ export interface ScreenNodeData {
 const screenshotCache = new Map<string, string>();
 
 export function ScreenNode({ data }: NodeProps) {
-  const { label, visitCount, screenIdHash, hasScreenshot, runId } =
+  const { label, visitCount, screenIdHash, hasScreenshot, runId, overlay } =
     data as unknown as ScreenNodeData;
 
   const [src, setSrc] = useState<string | null>(
@@ -61,19 +66,49 @@ export function ScreenNode({ data }: NodeProps) {
   return (
     <div
       style={{
+        position: "relative",
         width: 200,
         height: 260,
-        background: "#fff",
-        border: "1px solid #d9d9d9",
+        background: overlay?.bgColor ?? "#fff",
+        border: `${overlay?.borderColor ? 2 : 1}px solid ${overlay?.borderColor ?? "#d9d9d9"}`,
         borderRadius: 8,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         padding: 8,
         overflow: "hidden",
+        transition: "background 200ms, border-color 200ms",
       }}
     >
       <Handle type="target" position={Position.Left} />
+
+      {/* PER-39: corner badge — defect count, "+" / "−" diff
+          markers etc. Rendered absolutely so it overlays the
+          thumbnail without nudging the layout. */}
+      {overlay?.badgeText && (
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            right: 4,
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 9,
+            background: overlay.badgeColor ?? "#cf1322",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            zIndex: 1,
+          }}
+        >
+          {overlay.badgeText}
+        </div>
+      )}
 
       {/* Thumbnail area */}
       <div

@@ -421,6 +421,7 @@ export function RunResults() {
           edges={edges}
           height={520}
           runId={runId}
+          workspaceId={currentWs?.id ?? null}
           contextMenuItems={runId ? [{
             key: "start-from-here",
             label: "🚀 Стартовать новый run отсюда",

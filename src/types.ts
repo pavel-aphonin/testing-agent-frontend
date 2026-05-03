@@ -894,6 +894,29 @@ export type HfDownloadEvent =
 export type GraphLibrary = "react-flow" | "cytoscape" | "vis-network";
 export type Language = "en" | "ru";
 
+/** PER-39: data-overlay modes for the StateGraph. ``default`` keeps
+ *  the existing neutral styling; the others colour nodes by run
+ *  metadata so the user spots problem zones at a glance. */
+export type GraphOverlayMode =
+  | "default"
+  | "defects"
+  | "spec"
+  | "visits"
+  | "diff";
+
+/** Per-node visual override produced by the overlay layer. Renderers
+ *  fall back to their built-in defaults when a key is undefined. */
+export interface NodeOverlayStyle {
+  /** Border color (hex). */
+  borderColor?: string;
+  /** Background fill (hex). */
+  bgColor?: string;
+  /** Short text shown as a corner badge — e.g. "3" for defect count. */
+  badgeText?: string;
+  /** Badge background color (hex). */
+  badgeColor?: string;
+}
+
 export interface AgentSettings {
   id: string;
   user_id: string;

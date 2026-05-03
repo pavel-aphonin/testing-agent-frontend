@@ -11,9 +11,13 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 
-import type { RunEdgeSummary, RunScreenSummary } from "@/types";
+import type {
+  NodeOverlayStyle,
+  RunEdgeSummary,
+  RunScreenSummary,
+} from "@/types";
 
-import { ScreenNode } from "./ScreenNode";
+import { ScreenNode, type ScreenNodeData } from "./ScreenNode";
 
 interface Props {
   screens: RunScreenSummary[];
@@ -25,6 +29,9 @@ interface Props {
    *  renderer falls back to its built-in "select node" behaviour. */
   onNodeClick?: (screenHash: string) => void;
   onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
+  /** PER-39: hash → visual override; missing entries render with the
+   *  built-in defaults. */
+  overlayByHash?: Map<string, NodeOverlayStyle>;
 }
 
 const NODE_W = 216;
@@ -58,24 +65,41 @@ function layout(
 // eslint-disable-next-line react-refresh/only-export-components
 const NODE_TYPES = { screenNode: ScreenNode };
 
-export function GraphReactFlow({ screens, edges, height = 520, runId, onNodeClick, onNodeContextMenu }: Props) {
+export function GraphReactFlow({
+  screens, edges, height = 520, runId,
+  onNodeClick, onNodeContextMenu, overlayByHash,
+}: Props) {
   const { t } = useTranslation();
+  // PER-42 bugfix: react-flow's onNode* events surface ``node.id``
+  // (synthetic "s0", "s1" labels we use for layout), not the screen
+  // hash. Build a reverse map and translate before bubbling up.
+  const hashByNodeId = useMemo(() => {
+    const m = new Map<string, string>();
+    screens.forEach((s, i) => m.set(`s${i}`, s.screen_id_hash));
+    return m;
+  }, [screens]);
+
   const { nodes, edges: rfEdges } = useMemo(() => {
     const idFor = new Map<string, string>();
     screens.forEach((s, i) => idFor.set(s.screen_id_hash, `s${i}`));
 
-    const baseNodes: Node[] = screens.map((s, i) => ({
-      id: `s${i}`,
-      type: "screenNode",
-      data: {
+    const baseNodes: Node[] = screens.map((s, i) => {
+      const overlay = overlayByHash?.get(s.screen_id_hash);
+      const data: ScreenNodeData = {
         label: s.name || s.screen_id_hash.slice(0, 10),
         visitCount: s.visit_count,
         screenIdHash: s.screen_id_hash,
         hasScreenshot: !!s.screenshot_path,
         runId,
-      },
-      position: { x: 0, y: 0 },
-    }));
+        overlay,
+      };
+      return {
+        id: `s${i}`,
+        type: "screenNode",
+        data,
+        position: { x: 0, y: 0 },
+      };
+    });
 
     const seen = new Set<string>();
     const baseEdges: Edge[] = [];
@@ -104,7 +128,7 @@ export function GraphReactFlow({ screens, edges, height = 520, runId, onNodeClic
     });
 
     return layout(baseNodes, baseEdges);
-  }, [screens, edges, runId]);
+  }, [screens, edges, runId, overlayByHash]);
 
   if (screens.length === 0) {
     return (
@@ -131,14 +155,18 @@ export function GraphReactFlow({ screens, edges, height = 520, runId, onNodeClic
         nodeTypes={NODE_TYPES}
         fitView
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node) => onNodeClick?.(node.id)}
+        onNodeClick={(_, node) => {
+          const hash = hashByNodeId.get(node.id);
+          if (hash) onNodeClick?.(hash);
+        }}
         onNodeContextMenu={(event, node) => {
           // Prevent the browser's native context menu — we render our
           // own (PER-42). ``event`` is a synthetic React event; cast
           // because react-flow's signature is more permissive.
           (event as unknown as { preventDefault: () => void }).preventDefault();
           const e = event as unknown as { clientX: number; clientY: number };
-          onNodeContextMenu?.(node.id, { x: e.clientX, y: e.clientY });
+          const hash = hashByNodeId.get(node.id);
+          if (hash) onNodeContextMenu?.(hash, { x: e.clientX, y: e.clientY });
         }}
       >
         <Background />

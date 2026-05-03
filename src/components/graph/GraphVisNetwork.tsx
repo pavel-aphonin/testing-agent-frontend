@@ -4,7 +4,11 @@ import { Network, type Edge, type Node } from "vis-network";
 import { DataSet } from "vis-network/standalone";
 import "vis-network/styles/vis-network.css";
 
-import type { RunEdgeSummary, RunScreenSummary } from "@/types";
+import type {
+  NodeOverlayStyle,
+  RunEdgeSummary,
+  RunScreenSummary,
+} from "@/types";
 
 interface Props {
   screens: RunScreenSummary[];
@@ -13,9 +17,15 @@ interface Props {
   /** PER-42: same node-interaction contract as the other adapters. */
   onNodeClick?: (screenHash: string) => void;
   onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
+  /** PER-39: hash → visual override; missing entries render with the
+   *  built-in defaults. */
+  overlayByHash?: Map<string, NodeOverlayStyle>;
 }
 
-export function GraphVisNetwork({ screens, edges, height = 520, onNodeClick, onNodeContextMenu }: Props) {
+export function GraphVisNetwork({
+  screens, edges, height = 520,
+  onNodeClick, onNodeContextMenu, overlayByHash,
+}: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -27,14 +37,25 @@ export function GraphVisNetwork({ screens, edges, height = 520, onNodeClick, onN
     screens.forEach((s, i) => idFor.set(s.screen_id_hash, `s${i}`));
 
     const nodes = new DataSet<Node>(
-      screens.map((s, i) => ({
-        id: `s${i}`,
-        label: `${s.name || s.screen_id_hash.slice(0, 10)}\n${t("graph.visits", { count: s.visit_count })}`,
-        shape: "box",
-        font: { size: 12, multi: false },
-        color: { background: "#fff", border: "#d9d9d9" },
-        margin: { top: 8, right: 12, bottom: 8, left: 12 },
-      })),
+      screens.map((s, i) => {
+        const overlay = overlayByHash?.get(s.screen_id_hash);
+        const baseLabel = `${s.name || s.screen_id_hash.slice(0, 10)}\n${t("graph.visits", { count: s.visit_count })}`;
+        return {
+          id: `s${i}`,
+          // PER-39: badge inlined into label — vis-network has no
+          // first-class badge. Suffix is short enough not to break
+          // the box layout.
+          label: overlay?.badgeText ? `${baseLabel}\n[${overlay.badgeText}]` : baseLabel,
+          shape: "box",
+          font: { size: 12, multi: false },
+          color: {
+            background: overlay?.bgColor ?? "#fff",
+            border: overlay?.borderColor ?? "#d9d9d9",
+          },
+          borderWidth: overlay?.borderColor ? 2 : 1,
+          margin: { top: 8, right: 12, bottom: 8, left: 12 },
+        };
+      }),
     );
 
     const seen = new Set<string>();
@@ -118,7 +139,7 @@ export function GraphVisNetwork({ screens, edges, height = 520, onNodeClick, onN
       network.destroy();
       networkRef.current = null;
     };
-  }, [screens, edges, onNodeClick, onNodeContextMenu, t]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash, t]);
 
   if (screens.length === 0) {
     return (

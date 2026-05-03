@@ -5,7 +5,11 @@ import cytoscape, { type Core } from "cytoscape";
 // re-export the default for use as a Cytoscape extension.
 import dagre from "cytoscape-dagre";
 
-import type { RunEdgeSummary, RunScreenSummary } from "@/types";
+import type {
+  NodeOverlayStyle,
+  RunEdgeSummary,
+  RunScreenSummary,
+} from "@/types";
 
 cytoscape.use(dagre);
 
@@ -16,9 +20,15 @@ interface Props {
   /** PER-42: same node-interaction contract as the other adapters. */
   onNodeClick?: (screenHash: string) => void;
   onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
+  /** PER-39: hash → visual override; missing entries render with the
+   *  built-in defaults. */
+  overlayByHash?: Map<string, NodeOverlayStyle>;
 }
 
-export function GraphCytoscape({ screens, edges, height = 520, onNodeClick, onNodeContextMenu }: Props) {
+export function GraphCytoscape({
+  screens, edges, height = 520,
+  onNodeClick, onNodeContextMenu, overlayByHash,
+}: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -29,13 +39,25 @@ export function GraphCytoscape({ screens, edges, height = 520, onNodeClick, onNo
     const idFor = new Map<string, string>();
     screens.forEach((s, i) => idFor.set(s.screen_id_hash, `s${i}`));
 
-    const nodeElements: cytoscape.ElementDefinition[] = screens.map((s, i) => ({
-      data: {
-        id: `s${i}`,
-        label: s.name || s.screen_id_hash.slice(0, 10),
-        visits: s.visit_count,
-      },
-    }));
+    const nodeElements: cytoscape.ElementDefinition[] = screens.map((s, i) => {
+      const overlay = overlayByHash?.get(s.screen_id_hash);
+      return {
+        data: {
+          id: `s${i}`,
+          // PER-39: badge appears as a suffix in the label since
+          // cytoscape doesn't have a first-class badge primitive
+          // and overlays would require a node-html plugin.
+          label: overlay?.badgeText
+            ? `${s.name || s.screen_id_hash.slice(0, 10)} [${overlay.badgeText}]`
+            : (s.name || s.screen_id_hash.slice(0, 10)),
+          visits: s.visit_count,
+          // Inline-style fields read by per-element selectors below.
+          bg: overlay?.bgColor ?? "#fff",
+          border: overlay?.borderColor ?? "#d9d9d9",
+          borderWidth: overlay?.borderColor ? 2 : 1,
+        },
+      };
+    });
 
     const edgeElements: cytoscape.ElementDefinition[] = [];
     edges.forEach((e, i) => {
@@ -65,9 +87,10 @@ export function GraphCytoscape({ screens, edges, height = 520, onNodeClick, onNo
         {
           selector: "node",
           style: {
-            "background-color": "#fff",
-            "border-width": 1,
-            "border-color": "#d9d9d9",
+            // PER-39: read overlay-driven values from per-element data.
+            "background-color": "data(bg)",
+            "border-width": "data(borderWidth)",
+            "border-color": "data(border)",
             label: "data(label)",
             "text-valign": "center",
             "text-halign": "center",
@@ -145,7 +168,7 @@ export function GraphCytoscape({ screens, edges, height = 520, onNodeClick, onNo
       cy.destroy();
       cyRef.current = null;
     };
-  }, [screens, edges, onNodeClick, onNodeContextMenu]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash]);
 
   if (screens.length === 0) {
     return (

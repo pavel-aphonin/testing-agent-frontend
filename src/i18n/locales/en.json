@@ -129,7 +129,25 @@
   },
   "graph": {
     "visits": "visits: {{count}}",
-    "noData": "No graph data"
+    "noData": "No graph data",
+    "overlay": {
+      "label": "Overlay",
+      "baselinePlaceholder": "Pick a baseline run",
+      "modes": {
+        "default": "Default",
+        "defects": "Defects",
+        "spec": "Spec",
+        "visits": "Visits",
+        "diff": "Diff"
+      },
+      "tooltip": {
+        "default": "All nodes the same color — default behaviour",
+        "defects": "Node color = priority of the most critical defect on the screen, badge = total count",
+        "spec": "Green if RAG verification matched, red if not, yellow if mixed",
+        "visits": "Heatmap by visit_count: pale → saturated blue",
+        "diff": "Highlights screens added and removed against the selected baseline run"
+      }
+    }
   },
   "runResults": {
     "title": "Run results",
