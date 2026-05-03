@@ -994,6 +994,15 @@ export interface RunEdgeSummary {
   /** One-line LLM rationale for picking this action; null in MC mode
    *  and on edges produced by the deterministic scenario runner. */
   llm_reasoning?: string | null;
+  /** PER-36: RAG verification verdict for the destination screen.
+   *  Null when RAG was disabled or unreachable for this step. */
+  rag_verdict_json?: {
+    matched: boolean;
+    score: number;
+    snippet: string;
+    document_id?: string | null;
+    document_title?: string | null;
+  } | null;
   created_at: string;
 }
 

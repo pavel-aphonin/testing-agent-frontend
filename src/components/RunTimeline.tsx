@@ -1,4 +1,4 @@
-import { Card, Empty, Image, Space, Tag, Typography } from "antd";
+import { Card, Empty, Image, Space, Tag, Tooltip, Typography } from "antd";
 
 import type { RunEdgeSummary } from "@/types";
 
@@ -58,6 +58,13 @@ function TimelineStep({ runId, edge }: { runId: string; edge: RunEdgeSummary }) 
               {edge.success ? "ok" : "fail"}
             </Tag>
           </div>
+          {/* PER-36: RAG verdict pill — only shown when this step
+              actually went through RAG verification. */}
+          {edge.rag_verdict_json && (
+            <div style={{ marginTop: 4 }}>
+              <RagVerdictBadge verdict={edge.rag_verdict_json} />
+            </div>
+          )}
         </div>
         {/* Before screenshot */}
         <ScreenshotCell src={before} alt={`step ${edge.step_idx} before`} label="до" />
@@ -136,4 +143,59 @@ function humanizeAction(
     : element
     ? `${actionType} → «${element}»`
     : actionType;
+}
+
+/**
+ * Tiny ✓/⚠/✗ pill summarising the RAG verdict for one step (PER-36).
+ *
+ * Threshold mapping:
+ *   score ≥ 0.7  → ✓ green   "соответствует спеке"
+ *   score 0.4-0.7 → ⚠ yellow  "частичное соответствие"
+ *   score < 0.4  → ✗ red     "расхождение со спекой"
+ *
+ * Hover reveals the matched snippet + document title so a reviewer
+ * can decide whether the verdict is right.
+ */
+function RagVerdictBadge({
+  verdict,
+}: {
+  verdict: NonNullable<RunEdgeSummary["rag_verdict_json"]>;
+}) {
+  const score = verdict.score ?? 0;
+  let color: "success" | "warning" | "error" = "error";
+  let glyph = "✗";
+  let label = "расхождение";
+  if (score >= 0.7) {
+    color = "success";
+    glyph = "✓";
+    label = "совпадает";
+  } else if (score >= 0.4) {
+    color = "warning";
+    glyph = "⚠";
+    label = "частично";
+  }
+  const title = (
+    <div style={{ maxWidth: 320, fontSize: 12 }}>
+      <div>
+        <strong>Спека:</strong> {label} ({(score * 100).toFixed(0)}%)
+      </div>
+      {verdict.document_title && (
+        <div style={{ opacity: 0.85 }}>
+          Документ: <em>{verdict.document_title}</em>
+        </div>
+      )}
+      {verdict.snippet && (
+        <div style={{ marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap" }}>
+          «{verdict.snippet}»
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <Tooltip title={title}>
+      <Tag color={color} style={{ margin: 0, fontSize: 11 }}>
+        {glyph} спека
+      </Tag>
+    </Tooltip>
+  );
 }
