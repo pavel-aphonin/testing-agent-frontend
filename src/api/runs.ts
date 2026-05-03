@@ -38,6 +38,37 @@ export async function getRunResults(id: string): Promise<RunResults> {
   return response.data;
 }
 
+/* ── Screen elements (PER-38) ───────────────────────────────────── */
+
+export interface ScreenElement {
+  type?: string;
+  label?: string;
+  value?: string;
+  test_id?: string;
+  identifier?: string;
+  frame?: { x?: number; y?: number; width?: number; height?: number } | number[];
+  enabled?: boolean;
+  // Worker may add more fields per-platform; keep open-ended.
+  [key: string]: unknown;
+}
+
+export interface ScreenElementsResponse {
+  screen_hash: string;
+  name: string;
+  screenshot_path: string | null;
+  elements: ScreenElement[];
+}
+
+export async function getScreenElements(
+  runId: string,
+  screenHash: string,
+): Promise<ScreenElementsResponse> {
+  const r = await apiClient.get<ScreenElementsResponse>(
+    `/api/runs/${runId}/screens/${screenHash}/elements`,
+  );
+  return r.data;
+}
+
 export async function deleteRun(id: string): Promise<void> {
   await apiClient.delete(`/api/runs/${id}`);
 }
