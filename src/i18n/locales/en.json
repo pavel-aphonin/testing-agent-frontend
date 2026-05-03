@@ -135,9 +135,7 @@
     "mode": "Mode",
     "started": "Started",
     "finished": "Finished",
-    "noRunId": "No run ID in the URL",
-    "realRun": "Real device",
-    "syntheticRun": "Synthetic"
+    "noRunId": "No run ID in the URL"
   },
   "events": {
     "stepLabel": "step {{idx}}",

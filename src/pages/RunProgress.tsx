@@ -332,18 +332,9 @@ export function RunProgress() {
             : t("runProgress.title")}
         </Typography.Title>
         <Tag color={STATUS_COLOR[currentStatus]}>{t(`runStatus.${currentStatus}`)}</Tag>
-        {/* Synthetic vs Real. V2 flow (worker auto-provisions a simulator)
-            means device_type and app_file_path are set. V1 flow is legacy —
-            the user plugs in a pre-existing device_id and we talk to it
-            directly. The badge helps support/QA see at a glance which kind
-            of run they're looking at without clicking into details. */}
-        {snapshot && (
-          snapshot.run.device_type && snapshot.run.app_file_path ? (
-            <Tag color="blue">{t("runProgress.realRun")}</Tag>
-          ) : (
-            <Tag color="geekblue">{t("runProgress.syntheticRun")}</Tag>
-          )
-        )}
+        {/* PER-48: synthetic/real badge removed — worker only does
+            real runs now, the badge would always show "Real" and
+            adds visual noise. */}
         {/* Connection indicator only matters while the run is active. After
             the run reaches a terminal state, the WebSocket stays open but
             no events will arrive — showing "● Подключено" misleads the
