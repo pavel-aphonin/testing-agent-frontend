@@ -4,6 +4,10 @@ import { useAuthStore } from "@/store/auth";
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
+  // PER-47: axios defaults to 0 (no timeout) — without this an unresponsive
+  // backend leaves the UI in a permanent spinner. 120s comfortably covers
+  // the slowest legitimate calls (RAG ingestion, big-app upload).
+  timeout: 120_000,
   headers: {
     "Content-Type": "application/json",
   },

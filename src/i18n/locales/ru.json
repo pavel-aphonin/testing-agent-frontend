@@ -98,6 +98,7 @@
     "uploadAppFormatsHint": "Поддерживаются: .app.zip / .ipa (iOS), .apk (Android)",
     "uploadAppUnsupportedFormat": "Неподдерживаемый формат «{{ext}}». Загрузите .app.zip, .ipa или .apk.",
     "uploadingApp": "Загрузка\u2026",
+    "uploadingAppPercent": "Загрузка {{percent}}%\u2026",
     "uploadSuccess": "Приложение определено: {{bundleId}}",
     "uploadFailed": "Загрузка не удалась",
     "selectDevice": "Устройство",

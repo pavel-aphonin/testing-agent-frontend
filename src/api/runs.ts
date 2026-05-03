@@ -17,13 +17,30 @@ export async function createRunV2(payload: RunCreateV2): Promise<Run> {
   return response.data;
 }
 
-export async function uploadApp(file: File): Promise<AppUploadResponse> {
+export async function uploadApp(
+  file: File,
+  // PER-47: optional progress callback so the UI can render a percentage
+  // instead of a static "loading" placeholder. Receives 0..100.
+  onProgress?: (percent: number) => void,
+): Promise<AppUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
   const response = await apiClient.post<AppUploadResponse>(
     "/api/uploads/app",
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } },
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress
+        ? (e) => {
+            // ``total`` is undefined when the server uses chunked transfer
+            // encoding — fall back to "indeterminate" by passing 100 only
+            // once the upload finishes (loaded === total === undefined).
+            if (e.total) {
+              onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          }
+        : undefined,
+    },
   );
   return response.data;
 }

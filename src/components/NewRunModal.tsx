@@ -34,6 +34,9 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
 
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadResult, setUploadResult] = useState<AppUploadResponse | null>(null);
+  // PER-47: 0..100 during upload, null otherwise. Drives the Dragger
+  // caption so the user sees progress instead of a frozen "Loading…".
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [useScenarios, setUseScenarios] = useState(false);
   const [pbtEnabled, setPbtEnabled] = useState(false);
 
@@ -81,6 +84,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
     form.resetFields();
     setUploadStatus("idle");
     setUploadResult(null);
+    setUploadProgress(null);
     setUseScenarios(false);
     setPbtEnabled(false);
     if (settingsQuery.data) {
@@ -94,16 +98,20 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   }, [open, form, settingsQuery.data]);
 
   const uploadMutation = useMutation({
-    mutationFn: uploadApp,
+    // PER-47: pass the current setUploadProgress through so axios's
+    // onUploadProgress feeds straight into our state hook.
+    mutationFn: (file: File) => uploadApp(file, (p) => setUploadProgress(p)),
     onSuccess: (data: AppUploadResponse) => {
       setUploadStatus("success");
       setUploadResult(data);
+      setUploadProgress(null);
       // Clear device selection when a new file is uploaded — the previous
       // selection may belong to a different platform.
       form.setFieldValue("device_config_id", undefined);
     },
     onError: () => {
       setUploadStatus("error");
+      setUploadProgress(null);
       notify.error(t("newRunModal.uploadFailed"));
     },
   });
@@ -232,7 +240,9 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
                 </p>
                 <p className="ant-upload-text">
                   {uploadStatus === "uploading"
-                    ? t("newRunModal.uploadingApp")
+                    ? uploadProgress !== null
+                      ? t("newRunModal.uploadingAppPercent", { percent: uploadProgress })
+                      : t("newRunModal.uploadingApp")
                     : t("newRunModal.uploadAppHelp")}
                 </p>
               </Upload.Dragger>
