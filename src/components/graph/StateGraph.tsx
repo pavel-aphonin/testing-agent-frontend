@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Space } from "antd";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
+import { ScreenDetailDrawer } from "@/components/ScreenDetailDrawer";
 import { getMySettings } from "@/api/settings";
 import type { GraphLibrary, RunEdgeSummary, RunScreenSummary } from "@/types";
 
@@ -9,6 +10,7 @@ import { clusterScreens } from "./clusterScreens";
 import { GraphCytoscape } from "./GraphCytoscape";
 import { GraphReactFlow } from "./GraphReactFlow";
 import { GraphVisNetwork } from "./GraphVisNetwork";
+import { NodeContextMenu, type NodeContextMenuItem } from "./NodeContextMenu";
 
 interface Props {
   screens: RunScreenSummary[];
@@ -17,6 +19,14 @@ interface Props {
   runId?: string;
   /** Override the user's saved preference (used by Settings preview). */
   libraryOverride?: GraphLibrary;
+  /** PER-42: extra entries appended to the right-click context menu.
+   *  Each item receives the clicked screen_id_hash. The host page
+   *  (RunResults) injects "Replay path", "Start from screen", etc. */
+  contextMenuItems?: NodeContextMenuItem[];
+  /** PER-42: when true (default), clicking a node opens the
+   *  ScreenDetailDrawer. Pages embedding the graph in a non-detail
+   *  context (Settings preview) can disable. */
+  openDrawerOnClick?: boolean;
 }
 
 // Threshold above which we auto-cluster screens by name prefix
@@ -37,9 +47,15 @@ const CLUSTER_THRESHOLD = 100;
  * shouldn't have to know whether it's looking at the raw graph or a
  * clustered one.
  *
+ * Click / right-click on a node bubbles up through the adapters into
+ * the ScreenDetailDrawer + NodeContextMenu integration here (PER-42).
+ *
  * If the settings request fails for any reason, falls back to React Flow.
  */
-export function StateGraph({ screens, edges, height, runId, libraryOverride }: Props) {
+export function StateGraph({
+  screens, edges, height, runId, libraryOverride,
+  contextMenuItems, openDrawerOnClick = true,
+}: Props) {
   const { data } = useQuery({
     queryKey: ["my-settings"],
     queryFn: getMySettings,
@@ -61,14 +77,39 @@ export function StateGraph({ screens, edges, height, runId, libraryOverride }: P
   const renderScreens = useClustered ? cluster.screens : screens;
   const renderEdges = useClustered ? cluster.edges : edges;
 
+  // ── PER-42: shared interaction state ──────────────────────────────
+  // Cluster nodes (id starts with "cluster:") aren't real screens —
+  // their "screen_id_hash" is synthetic, so click + right-click on
+  // them shouldn't trigger drawer / replay. We swallow them here to
+  // keep adapters dumb.
+  const [drawerHash, setDrawerHash] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ hash: string; anchor: { x: number; y: number } } | null>(null);
+
+  const handleNodeClick = useCallback((hash: string) => {
+    if (hash.startsWith("cluster:")) return;
+    if (openDrawerOnClick) setDrawerHash(hash);
+  }, [openDrawerOnClick]);
+
+  const handleNodeContext = useCallback((hash: string, anchor: { x: number; y: number }) => {
+    if (hash.startsWith("cluster:")) return;
+    setCtxMenu({ hash, anchor });
+  }, []);
+
   const renderer = (() => {
+    const shared = {
+      screens: renderScreens,
+      edges: renderEdges,
+      height,
+      onNodeClick: handleNodeClick,
+      onNodeContextMenu: handleNodeContext,
+    };
     if (lib === "cytoscape") {
-      return <GraphCytoscape screens={renderScreens} edges={renderEdges} height={height} />;
+      return <GraphCytoscape {...shared} />;
     }
     if (lib === "vis-network") {
-      return <GraphVisNetwork screens={renderScreens} edges={renderEdges} height={height} />;
+      return <GraphVisNetwork {...shared} />;
     }
-    return <GraphReactFlow screens={renderScreens} edges={renderEdges} height={height} runId={runId} />;
+    return <GraphReactFlow {...shared} runId={runId} />;
   })();
 
   return (
@@ -90,6 +131,23 @@ export function StateGraph({ screens, edges, height, runId, libraryOverride }: P
         />
       )}
       {renderer}
+
+      {/* PER-42: drawer + context menu live alongside the graph so
+          adapters stay rendering-only. */}
+      <ScreenDetailDrawer
+        open={drawerHash !== null}
+        runId={runId}
+        screenHash={drawerHash}
+        onClose={() => setDrawerHash(null)}
+      />
+      {ctxMenu && (
+        <NodeContextMenu
+          anchor={ctxMenu.anchor}
+          screenHash={ctxMenu.hash}
+          items={contextMenuItems ?? []}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
     </Space>
   );
 }

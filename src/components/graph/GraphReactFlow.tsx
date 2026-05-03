@@ -20,6 +20,11 @@ interface Props {
   edges: RunEdgeSummary[];
   height?: number;
   runId?: string;
+  /** PER-42: callbacks the host page wires up to react to user
+   *  interaction with graph nodes. Both optional — when null the
+   *  renderer falls back to its built-in "select node" behaviour. */
+  onNodeClick?: (screenHash: string) => void;
+  onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
 }
 
 const NODE_W = 216;
@@ -53,7 +58,7 @@ function layout(
 // eslint-disable-next-line react-refresh/only-export-components
 const NODE_TYPES = { screenNode: ScreenNode };
 
-export function GraphReactFlow({ screens, edges, height = 520, runId }: Props) {
+export function GraphReactFlow({ screens, edges, height = 520, runId, onNodeClick, onNodeContextMenu }: Props) {
   const { t } = useTranslation();
   const { nodes, edges: rfEdges } = useMemo(() => {
     const idFor = new Map<string, string>();
@@ -126,6 +131,15 @@ export function GraphReactFlow({ screens, edges, height = 520, runId }: Props) {
         nodeTypes={NODE_TYPES}
         fitView
         proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node) => onNodeClick?.(node.id)}
+        onNodeContextMenu={(event, node) => {
+          // Prevent the browser's native context menu — we render our
+          // own (PER-42). ``event`` is a synthetic React event; cast
+          // because react-flow's signature is more permissive.
+          (event as unknown as { preventDefault: () => void }).preventDefault();
+          const e = event as unknown as { clientX: number; clientY: number };
+          onNodeContextMenu?.(node.id, { x: e.clientX, y: e.clientY });
+        }}
       >
         <Background />
         <Controls showInteractive={false} />

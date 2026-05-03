@@ -13,9 +13,12 @@ interface Props {
   screens: RunScreenSummary[];
   edges: RunEdgeSummary[];
   height?: number;
+  /** PER-42: same node-interaction contract as the other adapters. */
+  onNodeClick?: (screenHash: string) => void;
+  onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
 }
 
-export function GraphCytoscape({ screens, edges, height = 520 }: Props) {
+export function GraphCytoscape({ screens, edges, height = 520, onNodeClick, onNodeContextMenu }: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -116,11 +119,33 @@ export function GraphCytoscape({ screens, edges, height = 520 }: Props) {
     });
 
     cyRef.current = cy;
+
+    // PER-42: bridge cytoscape's tap / cxttap events to the parent.
+    // Cytoscape uses ``data.id`` ("s0", "s1") internally — translate
+    // back to the original screen_id_hash via the screens array.
+    const handleTap = (evt: cytoscape.EventObject) => {
+      const idx = parseInt(String(evt.target.id()).slice(1), 10);
+      const hash = screens[idx]?.screen_id_hash;
+      if (hash) onNodeClick?.(hash);
+    };
+    const handleContextTap = (evt: cytoscape.EventObject) => {
+      const idx = parseInt(String(evt.target.id()).slice(1), 10);
+      const hash = screens[idx]?.screen_id_hash;
+      if (!hash) return;
+      const orig = (evt.originalEvent ?? {}) as { clientX?: number; clientY?: number; preventDefault?: () => void };
+      orig.preventDefault?.();
+      onNodeContextMenu?.(hash, { x: orig.clientX ?? 0, y: orig.clientY ?? 0 });
+    };
+    cy.on("tap", "node", handleTap);
+    cy.on("cxttap", "node", handleContextTap);
+
     return () => {
+      cy.off("tap", "node", handleTap);
+      cy.off("cxttap", "node", handleContextTap);
       cy.destroy();
       cyRef.current = null;
     };
-  }, [screens, edges]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu]);
 
   if (screens.length === 0) {
     return (

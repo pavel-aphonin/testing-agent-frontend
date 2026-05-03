@@ -10,9 +10,12 @@ interface Props {
   screens: RunScreenSummary[];
   edges: RunEdgeSummary[];
   height?: number;
+  /** PER-42: same node-interaction contract as the other adapters. */
+  onNodeClick?: (screenHash: string) => void;
+  onNodeContextMenu?: (screenHash: string, anchor: { x: number; y: number }) => void;
 }
 
-export function GraphVisNetwork({ screens, edges, height = 520 }: Props) {
+export function GraphVisNetwork({ screens, edges, height = 520, onNodeClick, onNodeContextMenu }: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -80,11 +83,42 @@ export function GraphVisNetwork({ screens, edges, height = 520 }: Props) {
     );
 
     networkRef.current = network;
+
+    // PER-42: bridge vis-network click / oncontext events to parent.
+    // ``params.nodes[0]`` is "s0"-style id; translate to screen_id_hash.
+    const hashFromVisId = (visId: string | number | undefined): string | undefined => {
+      if (typeof visId !== "string") return undefined;
+      const idx = parseInt(visId.slice(1), 10);
+      return screens[idx]?.screen_id_hash;
+    };
+    network.on("click", (params: { nodes?: string[] }) => {
+      const hash = hashFromVisId(params.nodes?.[0]);
+      if (hash) onNodeClick?.(hash);
+    });
+    network.on("oncontext", (params: {
+      nodes?: string[];
+      pointer: { DOM: { x: number; y: number } };
+      event: Event;
+    }) => {
+      const hash = hashFromVisId(params.nodes?.[0]);
+      if (!hash) return;
+      // vis-network synthesises its own event — preventDefault stops
+      // the native browser context menu so ours can render.
+      params.event.preventDefault?.();
+      // ``DOM`` coords are relative to the canvas; the parent expects
+      // viewport coords. Container's bounding rect bridges the gap.
+      const rect = containerRef.current?.getBoundingClientRect();
+      onNodeContextMenu?.(hash, {
+        x: (rect?.left ?? 0) + params.pointer.DOM.x,
+        y: (rect?.top ?? 0) + params.pointer.DOM.y,
+      });
+    });
+
     return () => {
       network.destroy();
       networkRef.current = null;
     };
-  }, [screens, edges]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu, t]);
 
   if (screens.length === 0) {
     return (
