@@ -44,6 +44,7 @@ import {
   listScenarios,
   updateScenario,
 } from "@/api/scenarios";
+import { listKnowledgeDocuments } from "@/api/knowledge";
 import { listTestData } from "@/api/testData";
 import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -425,6 +426,14 @@ export function AdminScenarios() {
     queryFn: () => listScenarios(workspace?.id),
   });
 
+  // PER-35: knowledge documents available to scope this scenario's
+  // RAG verification. Empty = whole workspace corpus (legacy default).
+  const knowledgeQ = useQuery({
+    queryKey: ["knowledge-documents", workspace?.id ?? "none"],
+    queryFn: () => listKnowledgeDocuments(workspace?.id),
+    staleTime: 60_000,
+  });
+
   const selected = scenariosQuery.data?.find((s) => s.id === selectedId) ?? null;
 
   const createMutation = useMutation({
@@ -479,6 +488,7 @@ export function AdminScenarios() {
       form.setFieldsValue({
         title: scenario.title,
         description: scenario.description ?? "",
+        rag_document_ids: scenario.rag_document_ids ?? [],
       });
     }
   };
@@ -494,7 +504,15 @@ export function AdminScenarios() {
       });
       updateMutation.mutate({
         id: selectedId,
-        payload: { title: values.title, description: values.description || undefined, steps_json: { steps: cleanSteps } },
+        payload: {
+          title: values.title,
+          description: values.description || undefined,
+          steps_json: { steps: cleanSteps },
+          // PER-35: explicit empty array → "all docs" (NULL on server).
+          rag_document_ids: (values.rag_document_ids ?? []).length
+            ? values.rag_document_ids
+            : null,
+        },
       });
     });
   };
@@ -565,6 +583,26 @@ export function AdminScenarios() {
                 </Form.Item>
                 <Form.Item name="description" label={t("scenarios.descriptionLabel")}>
                   <Input.TextArea rows={2} />
+                </Form.Item>
+
+                {/* PER-35: scope RAG verification to specific docs.
+                    Empty selection = whole workspace corpus. */}
+                <Form.Item
+                  name="rag_document_ids"
+                  label="Спека (документы базы знаний)"
+                  extra="Если не выбрать ни одного — RAG-сверка идёт по всему корпусу пространства."
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder="Выберите документы спеки (опционально)"
+                    loading={knowledgeQ.isLoading}
+                    options={(knowledgeQ.data ?? []).map((d) => ({
+                      value: d.id,
+                      label: d.title,
+                    }))}
+                    optionFilterProp="label"
+                  />
                 </Form.Item>
 
                 {editorMode === "json" ? (

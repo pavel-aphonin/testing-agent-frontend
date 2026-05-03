@@ -938,6 +938,9 @@ export interface ScenarioRead {
   description: string | null;
   steps_json: Record<string, unknown>;
   is_active: boolean;
+  /** PER-35: knowledge document IDs that scope this scenario's RAG
+   *  verification. Null/empty = whole workspace corpus. */
+  rag_document_ids?: string[] | null;
   created_at: string;
 }
 
@@ -946,6 +949,7 @@ export interface ScenarioCreate {
   description?: string;
   steps_json: Record<string, unknown>;
   workspace_id?: string | null;
+  rag_document_ids?: string[] | null;
 }
 
 export interface ScenarioUpdate {
@@ -953,6 +957,7 @@ export interface ScenarioUpdate {
   description?: string;
   steps_json?: Record<string, unknown>;
   is_active?: boolean;
+  rag_document_ids?: string[] | null;
 }
 
 // ---------------------------------------------------------------------- Profile
