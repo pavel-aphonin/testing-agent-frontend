@@ -19,6 +19,7 @@ import { AdminDevices } from "@/pages/AdminDevices";
 import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios, AdminScenarioEdit } from "@/pages/AdminScenarios";
+import { RFExample } from "@/pages/RFExample";
 import { AdminScenarioShapes } from "@/pages/AdminScenarioShapes";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
@@ -132,6 +133,10 @@ export default function App() {
       <WhatsNewProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Vanilla React Flow demo. No AppLayout, no auth, no AntD
+            wrappers — used to verify the library itself works in
+            our app environment, isolated from our customisations. */}
+        <Route path="/rf-test" element={<RFExample />} />
 
         <Route
           element={
