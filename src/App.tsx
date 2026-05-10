@@ -10,6 +10,7 @@ import { fetchMe } from "@/api/auth";
 import { getMySettings } from "@/api/settings";
 import { AppLayout } from "@/components/AppLayout";
 import { BrandingSync } from "@/components/BrandingSync";
+import { NotifyHost } from "@/components/NotifyHost";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WhatsNewProvider } from "@/components/WhatsNew";
 import { composeTokens, useBranding, useUserThemeOverrides } from "@/hooks/useBranding";
@@ -117,6 +118,10 @@ export default function App() {
         },
       }}
     >
+      {/* Themed notification host. Must live INSIDE ConfigProvider so
+          notification popups inherit the dark/light theme tokens —
+          AntD's static `notification.success(...)` API does not. */}
+      <NotifyHost />
       {/* Mounted once at the app root so <title> and favicon sync with
           branding on every route, including /login. */}
       <BrandingSync />

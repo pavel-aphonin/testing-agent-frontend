@@ -68,8 +68,10 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   });
 
   const scenariosQuery = useQuery({
-    queryKey: ["scenarios", workspace?.id ?? "none"],
-    queryFn: () => listScenarios(workspace?.id),
+    // Only active scenarios make it into a run — admin view sees the
+    // full list separately under a different cache key.
+    queryKey: ["scenarios", "active", workspace?.id ?? "none"],
+    queryFn: () => listScenarios(workspace?.id, { onlyActive: true }),
     enabled: open && useScenarios,
   });
 

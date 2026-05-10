@@ -1,8 +1,13 @@
 import { apiClient } from "@/api/client";
 import type { ScenarioCreate, ScenarioRead, ScenarioUpdate } from "@/types";
 
-export async function listScenarios(workspaceId?: string | null): Promise<ScenarioRead[]> {
-  const params = workspaceId ? { workspace_id: workspaceId } : {};
+export async function listScenarios(
+  workspaceId?: string | null,
+  options?: { onlyActive?: boolean },
+): Promise<ScenarioRead[]> {
+  const params: Record<string, string | boolean> = {};
+  if (workspaceId) params.workspace_id = workspaceId;
+  if (options?.onlyActive) params.only_active = true;
   const response = await apiClient.get<ScenarioRead[]>(
     "/api/scenarios",
     { params },
