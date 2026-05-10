@@ -21,8 +21,10 @@
 import {
   ApartmentOutlined,
   ArrowLeftOutlined,
+  BlockOutlined,
   BranchesOutlined,
   ClockCircleOutlined,
+  ClusterOutlined,
   DeleteOutlined,
   EyeOutlined,
   LinkOutlined,
@@ -50,6 +52,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   Alert,
+  AutoComplete,
   Button,
   Drawer,
   Empty,
@@ -67,9 +70,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useThemeStore } from "@/store/theme";
 
+import { autoLayout } from "./autoLayout";
 import { SCENARIO_NODE_TYPES } from "./nodes";
 import {
-  ACTION_VERBS,
   newNodeId,
   type ActionNodeData,
   type GraphEdge,
@@ -77,6 +80,7 @@ import {
   type GraphNodeType,
   type ScenarioGraphV2,
 } from "./types";
+import { useScenarioDictionaries, type DictItem } from "./useScenarioDictionaries";
 import { validateGraph, type ValidationIssue } from "./validate";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -94,6 +98,10 @@ interface Props {
   /** Id of the scenario currently being edited — excluded from the
    *  sub_scenario picker so it can't reference itself. */
   currentScenarioId?: string;
+  /** Active workspace id — used to look up custom dictionaries that
+   *  feed the action / element pickers. When omitted the editor falls
+   *  back to its hardcoded option set. */
+  workspaceId?: string | null;
   height?: number;
 }
 
@@ -148,6 +156,12 @@ const SHAPES: {
     icon: <ArrowLeftOutlined />,
   },
   {
+    type: "group",
+    label: "Группа",
+    hint: "Визуальный контейнер. Перетащите внутрь узлы, чтобы объединить смысловой блок.",
+    icon: <BlockOutlined />,
+  },
+  {
     type: "end",
     label: "Конец",
     hint: "Точка выхода. Может быть несколько (но обычно одна).",
@@ -170,6 +184,8 @@ function defaultDataFor(type: GraphNodeType): Record<string, unknown> {
       return { max_iterations: 10 };
     case "sub_scenario":
       return { linked_scenario_id: undefined };
+    case "group":
+      return { label: "Группа" };
     default:
       return {};
   }
@@ -195,11 +211,16 @@ function GraphEditorInner({
   variables,
   allScenarios,
   currentScenarioId,
+  workspaceId,
   height = 600,
 }: Props) {
   const { token } = theme.useToken();
   const themeMode = useThemeStore((s) => s.resolved);
   const rfApi = useReactFlow();
+  // Workspace dictionaries — when available, the action node form
+  // uses these instead of hardcoded options so admins can extend
+  // the picker without a code change.
+  const dicts = useScenarioDictionaries(workspaceId ?? null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   // Tracks the source of an in-progress drag from a handle. Set on
@@ -232,14 +253,35 @@ function GraphEditorInner({
   // saves us from writing diff-detection code.
   const rfNodes: Node[] = useMemo(
     () =>
-      value.nodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data: n.data as Record<string, unknown>,
-        // start + end are not deletable to keep the graph well-formed.
-        deletable: n.type !== "start" && n.type !== "end",
-      })),
+      value.nodes.map((n) => {
+        const rfNode: Node = {
+          id: n.id,
+          type: n.type,
+          position: n.position,
+          data: n.data as Record<string, unknown>,
+          // start + end are not deletable to keep the graph well-formed.
+          deletable: n.type !== "start" && n.type !== "end",
+        };
+        if (n.parentId) {
+          // PER-86 followup: ``parentId`` makes React Flow render this
+          // node inside the named group's bounds. ``extent: "parent"``
+          // confines drag movements to the group.
+          rfNode.parentId = n.parentId;
+          rfNode.extent = "parent";
+        }
+        if (n.type === "group") {
+          // Group nodes need an explicit width/height for React Flow
+          // to size the container. ``selectable`` so the user can
+          // open the editor; ``draggable`` for repositioning the
+          // whole group at once.
+          rfNode.style = {
+            width: n.width ?? 320,
+            height: n.height ?? 200,
+          };
+          rfNode.zIndex = -1; // children sit on top
+        }
+        return rfNode;
+      }),
     [value.nodes],
   );
 
@@ -356,16 +398,72 @@ function GraphEditorInner({
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       const next = applyNodeChanges(changes, rfNodes);
+      // PER-86 followup: react-flow doesn't bubble parentId changes
+      // through NodeChange; we do the parent-detection ourselves on
+      // every drag-stop. A node sitting fully inside a group's bbox
+      // becomes a child of that group; a node dragged outside its
+      // current group bbox becomes top-level again.
+      const groupRects = next
+        .filter((n) => n.type === "group")
+        .map((g) => {
+          const style = (g as Node & { style?: { width?: number; height?: number } }).style;
+          const w = (style?.width as number | undefined) ?? 320;
+          const h = (style?.height as number | undefined) ?? 200;
+          return {
+            id: g.id,
+            x: g.position?.x ?? 0,
+            y: g.position?.y ?? 0,
+            w,
+            h,
+          };
+        });
+      const inside = (
+        nx: number,
+        ny: number,
+        rect: (typeof groupRects)[number],
+      ): boolean =>
+        nx >= rect.x &&
+        nx <= rect.x + rect.w &&
+        ny >= rect.y &&
+        ny <= rect.y + rect.h;
+
       onChange({
         ...value,
         nodes: next.map<GraphNode>((n) => {
           const original = value.nodes.find((x) => x.id === n.id);
-          return {
+          // For non-group nodes look at where they are relative to
+          // every existing group. Smallest enclosing group wins.
+          // ``parentId`` carries through React Flow as-is once set,
+          // but we still want to recompute it to allow drag-out.
+          let parentId: string | null = null;
+          if (n.type !== "group") {
+            // React Flow positions of children with parentId are
+            // RELATIVE to the parent. We need absolute positions for
+            // the inside-test, so add the parent offset back.
+            const rfParentId =
+              (n as Node & { parentId?: string }).parentId ?? null;
+            const parentRect = rfParentId
+              ? groupRects.find((g) => g.id === rfParentId)
+              : null;
+            const absX = (n.position?.x ?? 0) + (parentRect?.x ?? 0);
+            const absY = (n.position?.y ?? 0) + (parentRect?.y ?? 0);
+            for (const g of groupRects) {
+              if (inside(absX, absY, g)) {
+                parentId = g.id;
+                break;
+              }
+            }
+          }
+          const out: GraphNode = {
             id: n.id,
             type: (n.type ?? original?.type ?? "action") as GraphNodeType,
             position: n.position ?? original?.position ?? { x: 0, y: 0 },
             data: (n.data ?? original?.data ?? {}) as Record<string, unknown>,
           };
+          if (parentId) out.parentId = parentId;
+          if (original?.width) out.width = original.width;
+          if (original?.height) out.height = original.height;
+          return out;
         }),
         // Drop edges that lost an endpoint (React Flow doesn't auto-prune
         // on node removal in v12).
@@ -614,6 +712,43 @@ function GraphEditorInner({
             Что есть что
           </Button>
         </Tooltip>
+        <Tooltip title="Авторазложить узлы по сетке (dagre)">
+          <Button
+            icon={<ClusterOutlined />}
+            size="small"
+            onClick={() => onChange(autoLayout(value))}
+            disabled={value.nodes.length === 0}
+          >
+            Авторазметка
+          </Button>
+        </Tooltip>
+        <Tooltip title="Добавить группу — потом перетащите в неё узлы">
+          <Button
+            icon={<BlockOutlined />}
+            size="small"
+            onClick={() => {
+              // The group-node lifecycle is identical to other shapes
+              // — we drop one in at a sensible default location.
+              const id = newNodeId("g");
+              const ys = value.nodes.map((n) => n.position?.y ?? 0);
+              onChange({
+                ...value,
+                nodes: [
+                  ...value.nodes,
+                  {
+                    id,
+                    type: "group",
+                    position: { x: 0, y: Math.max(...ys, 0) + 200 },
+                    data: { label: "Группа" },
+                  },
+                ],
+              });
+              setSelectedId(id);
+            }}
+          >
+            Группа
+          </Button>
+        </Tooltip>
         {selected && selected.type !== "start" && selected.type !== "end" && (
           <Tooltip title="Удалить выделенный узел (Backspace)">
             <Button
@@ -811,6 +946,9 @@ function GraphEditorInner({
             variables={variables}
             allScenarios={allScenarios}
             currentScenarioId={currentScenarioId}
+            actionOptions={dicts.actions}
+            elementOptions={dicts.elements}
+            hasElementsDict={dicts.hasElementsDict}
             onChange={handleSelectedDataChange}
           />
         )}
@@ -1027,12 +1165,18 @@ function NodeEditor({
   variables,
   allScenarios,
   currentScenarioId,
+  actionOptions,
+  elementOptions,
+  hasElementsDict,
   onChange,
 }: {
   node: GraphNode;
   variables?: { key: string; value?: string }[];
   allScenarios?: { id: string; title: string }[];
   currentScenarioId?: string;
+  actionOptions: DictItem[];
+  elementOptions: DictItem[];
+  hasElementsDict: boolean;
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   if (node.type === "action") {
@@ -1043,14 +1187,28 @@ function NodeEditor({
           <Select
             value={d.action ?? "tap"}
             onChange={(v) => onChange({ action: v })}
-            options={ACTION_VERBS}
+            options={actionOptions}
           />
         </Form.Item>
-        <Form.Item label="Элемент">
-          <Input
+        <Form.Item
+          label="Элемент"
+          extra={
+            hasElementsDict
+              ? "Подсказки берутся из справочника «Элементы UI»."
+              : "Подсказок нет — заведите справочник с кодом ui_elements в разделе «Справочники», чтобы появился autocomplete."
+          }
+        >
+          <AutoComplete
             value={d.element_label ?? ""}
-            onChange={(e) => onChange({ element_label: e.target.value })}
+            onChange={(v) => onChange({ element_label: v ?? "" })}
+            options={elementOptions}
             placeholder="Кнопка, поле, переключатель..."
+            filterOption={(input, option) =>
+              (option?.label ?? "")
+                .toString()
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
           />
         </Form.Item>
         <Form.Item label="Значение">
@@ -1156,6 +1314,24 @@ function NodeEditor({
             value={d.max_iterations ?? 10}
             onChange={(v) => onChange({ max_iterations: v ?? 10 })}
             style={{ width: "100%" }}
+          />
+        </Form.Item>
+      </Form>
+    );
+  }
+
+  if (node.type === "group") {
+    const d = node.data as { label?: string };
+    return (
+      <Form layout="vertical">
+        <Form.Item
+          label="Название группы"
+          extra="Группа — это просто визуальный контейнер. Перетащите внутрь неё узлы, чтобы объединить смысловой блок."
+        >
+          <Input
+            value={d.label ?? ""}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder="например: Регистрация"
           />
         </Form.Item>
       </Form>

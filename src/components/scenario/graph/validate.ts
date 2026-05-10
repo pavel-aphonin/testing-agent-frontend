@@ -260,6 +260,9 @@ export function validateGraph(graph: ScenarioGraphV2): ValidationIssue[] {
   }
 
   for (const n of nodes) {
+    // Group nodes are pure visual containers — they don't participate
+    // in execution, so the runtime checks below don't apply.
+    if (n.type === "group") continue;
     // Each non-end node must have at least one outgoing edge.
     if (n.type !== "end" && (outCount.get(n.id) ?? 0) === 0) {
       issues.push({
@@ -375,6 +378,10 @@ export function validateGraph(graph: ScenarioGraphV2): ValidationIssue[] {
 function labelFor(n: GraphNode): string {
   if (n.type === "start") return "Начало";
   if (n.type === "end") return "Конец";
+  if (n.type === "group") {
+    const d = n.data as { label?: string };
+    return d.label ? `Группа: ${d.label}` : "Группа";
+  }
   if (n.type === "sub_scenario") {
     const d = n.data as { linked_scenario_title?: string };
     return d.linked_scenario_title

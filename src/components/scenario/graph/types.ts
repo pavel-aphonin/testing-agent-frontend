@@ -15,7 +15,8 @@ export type GraphNodeType =
   | "wait"
   | "screen_check"
   | "loop_back"
-  | "sub_scenario";
+  | "sub_scenario"
+  | "group";
 
 export interface GraphPosition {
   x: number;
@@ -88,6 +89,14 @@ export interface GraphNode {
   type: GraphNodeType;
   position: GraphPosition;
   data: NodeData;
+  /** PER-86 followup: when set, this node is rendered inside the
+   *  parent's group bounding box. React Flow uses the same field
+   *  name so we can pass it through with no translation. */
+  parentId?: string | null;
+  /** Optional explicit width/height. Mostly used by group nodes
+   *  whose size is configured by the user; regular nodes auto-size. */
+  width?: number;
+  height?: number;
 }
 
 export interface GraphEdgeData {
@@ -148,6 +157,9 @@ export function normalizeGraph(input: unknown): ScenarioGraphV2 {
         type: n.type,
         position: n.position ?? { x: 0, y: 0 },
         data: n.data ?? {},
+        parentId: n.parentId ?? undefined,
+        width: n.width,
+        height: n.height,
       })),
       edges: obj.edges.map((e) => ({
         id: String(e.id),

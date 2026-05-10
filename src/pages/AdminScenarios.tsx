@@ -840,6 +840,7 @@ export function AdminScenarioEdit() {
                 title: s.title,
               }))}
               currentScenarioId={id}
+              workspaceId={workspace?.id ?? null}
               height={640}
             />
           </Form.Item>

@@ -345,6 +345,37 @@ export function SubScenarioNode({ data }: NodeProps) {
   );
 }
 
+// ─────────────────────────────────────── Group (translucent container)
+
+export function GroupNode({ data }: NodeProps) {
+  const { token } = theme.useToken();
+  const d = (data ?? {}) as { label?: string; width?: number; height?: number };
+  return (
+    <div
+      style={{
+        width: d.width ?? 320,
+        height: d.height ?? 200,
+        background: token.colorFillTertiary,
+        border: `1px dashed ${token.colorBorder}`,
+        borderRadius: 12,
+        padding: "6px 10px",
+        position: "relative",
+      }}
+    >
+      <Typography.Text
+        type="secondary"
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+        }}
+      >
+        {d.label || "Группа"}
+      </Typography.Text>
+    </div>
+  );
+}
+
 // Re-exported map consumed by ReactFlow's `nodeTypes` prop. Including
 // here so any new node type only has to register in one place.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -357,6 +388,7 @@ export const SCENARIO_NODE_TYPES = {
   screen_check: ScreenCheckNode,
   loop_back: LoopBackNode,
   sub_scenario: SubScenarioNode,
+  group: GroupNode,
 };
 
 // Suppress "unused" warning on the imports of icons we expose for
