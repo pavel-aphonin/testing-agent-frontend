@@ -854,7 +854,11 @@ function GraphEditorInner({
           onPaneClick={() => {
             setSelectedId(null);
             setSelectedEdgeId(null);
-            setPicker(null);
+            // DO NOT setPicker(null) here. The pane click fires on
+            // the SAME mouse-up that triggers ``onConnectEnd``, so
+            // dismissing the picker here would race with opening it
+            // and the picker would never appear. ShapePicker has
+            // its own backdrop that handles outside-click dismissal.
           }}
           nodeTypes={SCENARIO_NODE_TYPES}
           fitView
