@@ -324,23 +324,32 @@ function GraphEditorInner({
   const rfEdges: Edge[] = useMemo(
     () =>
       value.edges.map((e) => {
-        // PER-83: surface condition expressions on the edge label so
-        // the user sees branching logic at a glance. Explicit
-        // ``data.label`` (set by the user in the edge editor) wins
-        // over the auto-derived condition string.
+        // PER-83: surface condition expressions on the edge label
+        // so the user sees branching logic at a glance. Explicit
+        // ``data.label`` (set in the edge editor) wins over the
+        // auto-derived condition string.
         const explicit = e.data?.label;
         const cond = (e.data?.condition ?? "").toString().trim();
         const display = explicit || (cond ? cond : undefined);
+        const isLoop = Boolean(e.data?.loop);
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          // Loop edges drawn dashed + warning colour as a visual hint —
-          // PER-84 will style this more carefully.
-          animated: !e.data?.loop,
-          style: e.data?.loop
-            ? { stroke: token.colorWarning, strokeDasharray: "5 5", strokeWidth: 2 }
-            : { stroke: token.colorTextTertiary, strokeWidth: 1.5 },
+          // BPMN convention: solid orthogonal lines for normal flow,
+          // dashed amber lines for back-edges. Animation reserved
+          // for the run-time progress indicator (later) — at edit
+          // time it makes diagrams look unfinished.
+          type: "smoothstep",
+          animated: false,
+          markerEnd: { type: "arrowclosed", color: isLoop ? token.colorWarning : token.colorTextSecondary } as Edge["markerEnd"],
+          style: isLoop
+            ? {
+                stroke: token.colorWarning,
+                strokeDasharray: "6 4",
+                strokeWidth: 2,
+              }
+            : { stroke: token.colorTextSecondary, strokeWidth: 1.6 },
           label: display,
           labelStyle: {
             fontSize: 11,
@@ -349,7 +358,7 @@ function GraphEditorInner({
           },
           labelBgStyle: {
             fill: token.colorBgContainer,
-            fillOpacity: 0.85,
+            fillOpacity: 0.92,
           },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
@@ -824,9 +833,30 @@ function GraphEditorInner({
         />
       )}
 
-      {/* ─── Canvas ────────────────────────────────────────────── */}
+      {/* ─── Canvas ──────────────────────────────────────────────
+          Listens for HTML5 drag-and-drop coming from the shape rail
+          (left side). Drop coords go through screenToFlowPosition
+          to land at the cursor in graph space. */}
       <div
         ref={canvasRef}
+        onDragOver={(e) => {
+          // Required to allow drop — without preventDefault the
+          // browser refuses the drop entirely.
+          if (e.dataTransfer.types.includes("application/scenario-shape")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+          }
+        }}
+        onDrop={(e) => {
+          const code = e.dataTransfer.getData("application/scenario-shape");
+          if (!code) return;
+          e.preventDefault();
+          const flow = rfApi.screenToFlowPosition({
+            x: e.clientX,
+            y: e.clientY,
+          });
+          addNodeAt(code, flow, null, null);
+        }}
         style={{
           height,
           border: `1px solid ${token.colorBorderSecondary}`,
@@ -892,6 +922,11 @@ function GraphEditorInner({
             />
           )}
         </ReactFlow>
+
+        {/* Shape rail — vertical palette glued to the canvas's left
+            edge. Items are HTML5-draggable; dropping anywhere on the
+            canvas creates the corresponding node at the cursor. */}
+        <ShapeRail items={shapeItems} existingHasStart={value.nodes.some((n) => n.type === "start")} />
 
         {debugEnabled && (
           <div
@@ -1056,6 +1091,101 @@ function GraphEditorInner({
 
 // ──────────────────────────────────────────────────────────────────────
 // Shape picker — floating popup for the drag-to-create flow.
+
+// ──────────────────────────────────────────────────────────────────────
+// ShapeRail — vertical palette glued to the canvas's left edge.
+// Each item is HTML5-draggable; on drop the canvas's onDrop handler
+// reads the shape code from dataTransfer and instantiates the node.
+
+function ShapeRail({
+  items,
+  existingHasStart,
+}: {
+  items: ShapeItem[];
+  existingHasStart: boolean;
+}) {
+  const { token } = theme.useToken();
+  // Hide ``start`` once one already exists — only one is valid.
+  const visible = items.filter(
+    (s) => !(s.category === "start" && existingHasStart),
+  );
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 8,
+        left: 8,
+        zIndex: 8,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        padding: 8,
+        background: token.colorBgElevated,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 10,
+        boxShadow: token.boxShadowTertiary,
+        maxHeight: "calc(100% - 16px)",
+        overflowY: "auto",
+      }}
+    >
+      <Typography.Text
+        type="secondary"
+        style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}
+      >
+        Фигуры
+      </Typography.Text>
+      {visible.map((s) => (
+        <Tooltip key={s.code} title={`${s.label}${s.hint ? " — " + s.hint : ""}`} placement="right">
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("application/scenario-shape", s.code);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              height: 44,
+              borderRadius: 8,
+              background: token.colorFillTertiary,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              cursor: "grab",
+              userSelect: "none",
+              fontSize: 18,
+              color: token.colorText,
+              transition: "transform 80ms, box-shadow 80ms",
+            }}
+            onMouseDown={(e) => {
+              (e.currentTarget as HTMLElement).style.cursor = "grabbing";
+            }}
+            onMouseUp={(e) => {
+              (e.currentTarget as HTMLElement).style.cursor = "grab";
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.transform = "scale(1.06)";
+              (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 2px ${token.colorPrimary}33`;
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.transform = "scale(1)";
+              (e.currentTarget as HTMLElement).style.boxShadow = "none";
+            }}
+          >
+            {s.icon}
+          </div>
+        </Tooltip>
+      ))}
+      <Typography.Text
+        type="secondary"
+        style={{ fontSize: 9, lineHeight: 1.2, marginTop: 4, textAlign: "center" }}
+      >
+        перетащите<br />на холст
+      </Typography.Text>
+    </div>
+  );
+}
 
 function ShapePicker({
   picker,
