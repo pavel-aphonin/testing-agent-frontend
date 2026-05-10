@@ -684,16 +684,30 @@ function GraphEditorInner({
 
   return (
     <>
-      {/* Hover affordance for handle dots. We deliberately do NOT
-          touch ``transform`` here — React Flow positions handles via
-          per-side translate(...) and overriding it shifts the visual
-          dot away from its hit target, so clicks land on the pane
-          and trigger panning instead of starting a connection. The
-          halo is done with box-shadow only, which preserves layout. */}
+      {/* Handle styling.
+          - We never touch ``transform`` on the handle itself —
+            React Flow positions handles via per-side translate(...)
+            and overriding it shifts the visual dot away from its
+            hit target, so clicks land on the pane and pan it.
+          - The visual halo is done via box-shadow.
+          - The CRITICAL bit: each handle has an invisible ``::before``
+            ring that extends the pointer hit area to ~36×36, so a
+            user grabbing slightly off the visible 18×18 dot still
+            starts a connection instead of dragging the node body /
+            panning the canvas. */}
       <style>{`
         .react-flow__node .react-flow__handle {
           opacity: 1;
+          pointer-events: all;
           transition: box-shadow 120ms ease-out;
+        }
+        .react-flow__node .react-flow__handle::before {
+          content: "";
+          position: absolute;
+          inset: -10px;
+          border-radius: 50%;
+          /* Transparent — only there to widen the hit area. */
+          background: transparent;
         }
         .react-flow__node:hover .react-flow__handle {
           box-shadow:
@@ -847,6 +861,11 @@ function GraphEditorInner({
           // IN or OUT from any side without us having to render
           // overlapping source+target dots per side.
           connectionMode={ConnectionMode.Loose}
+          // Generous snap distance: the user doesn't need to land
+          // exactly on the destination handle — coming within 32 px
+          // counts. Combined with the handle's own ::before halo
+          // this makes it almost impossible to miss.
+          connectionRadius={32}
         >
           <Background />
           <Controls />
