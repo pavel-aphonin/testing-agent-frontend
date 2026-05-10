@@ -42,6 +42,7 @@ import { listTestData } from "@/api/testData";
 import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
 import { JsonScenarioEditor } from "@/components/JsonScenarioEditor";
 import { GraphEditor } from "@/components/scenario/graph/GraphEditor";
+import { VanillaEditor } from "@/components/scenario/graph/VanillaEditor";
 import {
   emptyGraph,
   normalizeGraph,
@@ -828,27 +829,35 @@ export function AdminScenarioEdit() {
             />
           </Form.Item>
         ) : editorMode === "flowchart" ? (
-          // GraphEditor pulled OUT of <Form.Item>. AntD's Form
-          // wrappers add several layers of divs + CSS that have
-          // historically caused pointer-event quirks with React
-          // Flow inside them. Rendering it as a sibling label +
-          // editor pair gives the canvas a clean root.
+          // BISECT: temporarily replace our GraphEditor with the
+          // vanilla "Add Node on Edge Drop" example from React
+          // Flow's docs. Same page context (AppLayout, sidebar,
+          // page-level form) but stock React Flow internals.
+          // If THIS works here, the issue is inside GraphEditor's
+          // own internals (custom shapes / palette / picker).
           <div style={{ marginBottom: 24 }}>
             <div style={{ marginBottom: 8, fontWeight: 500 }}>
-              {`Блок-схема (${graph.nodes.filter((n) => n.type === "action").length} действий)`}
+              Vanilla React Flow (bisect)
             </div>
-            <GraphEditor
-              value={graph}
-              onChange={handleGraphChange}
-              variables={tdataVars}
-              allScenarios={(scenariosQuery.data ?? []).map((s) => ({
-                id: s.id,
-                title: s.title,
-              }))}
-              currentScenarioId={id}
-              workspaceId={workspace?.id ?? null}
-              height={640}
-            />
+            <VanillaEditor />
+            {/* Original GraphEditor kept rendered but invisible so
+                the value/onChange wiring stays referenced and
+                eslint doesn't yell. Will restore once we know
+                where the break is. */}
+            <div style={{ display: "none" }}>
+              <GraphEditor
+                value={graph}
+                onChange={handleGraphChange}
+                variables={tdataVars}
+                allScenarios={(scenariosQuery.data ?? []).map((s) => ({
+                  id: s.id,
+                  title: s.title,
+                }))}
+                currentScenarioId={id}
+                workspaceId={workspace?.id ?? null}
+                height={1}
+              />
+            </div>
           </div>
         ) : (
           // Constructor tab is a flat list of action steps. Disabled
