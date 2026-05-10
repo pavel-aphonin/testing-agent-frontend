@@ -14,7 +14,8 @@ export type GraphNodeType =
   | "decision"
   | "wait"
   | "screen_check"
-  | "loop_back";
+  | "loop_back"
+  | "sub_scenario";
 
 export interface GraphPosition {
   x: number;
@@ -60,9 +61,17 @@ export interface ScreenCheckNodeData {
 }
 
 export interface LoopBackNodeData {
-  /** Hard cap on iterations across the back-edge. PER-84 wires this
-   *  into the worker. */
+  /** Hard cap on iterations across the back-edge. */
   max_iterations?: number;
+  [key: string]: unknown;
+}
+
+export interface SubScenarioNodeData {
+  /** UUID of the scenario this node hands off to. */
+  linked_scenario_id?: string;
+  /** Cached display title — let the editor render something useful
+   *  even when the linked scenario hasn't finished loading. */
+  linked_scenario_title?: string;
   [key: string]: unknown;
 }
 
@@ -106,19 +115,11 @@ export interface ScenarioGraphV2 {
   edges: GraphEdge[];
 }
 
-/** Minimal valid graph: just the start and end nodes, one edge between
- *  them. Used as the seed for a brand-new scenario. */
+/** Truly empty graph — no preset nodes. The editor shows a CTA on
+ *  empty canvas to add the first node, leaving the user free to draw
+ *  the diagram from scratch (Miro-style). */
 export function emptyGraph(): ScenarioGraphV2 {
-  return {
-    version: 2,
-    nodes: [
-      { id: "start", type: "start", position: { x: 0, y: 0 }, data: {} },
-      { id: "end", type: "end", position: { x: 0, y: 240 }, data: {} },
-    ],
-    edges: [
-      { id: "e_start_end", source: "start", target: "end", data: {} },
-    ],
-  };
+  return { version: 2, nodes: [], edges: [] };
 }
 
 /**

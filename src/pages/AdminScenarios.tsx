@@ -835,20 +835,25 @@ export function AdminScenarioEdit() {
               value={graph}
               onChange={handleGraphChange}
               variables={tdataVars}
+              allScenarios={(scenariosQuery.data ?? []).map((s) => ({
+                id: s.id,
+                title: s.title,
+              }))}
+              currentScenarioId={id}
               height={640}
             />
           </Form.Item>
         ) : (
-          // PER-82: Constructor tab is a flat list of action steps.
-          // Disabled when the graph has branching/loops because
-          // serialising back into a linear chain would silently drop
-          // those non-linear pieces.
+          // Constructor tab is a flat list of action steps. Disabled
+          // when the graph has branching/loops because serialising
+          // back into a linear chain would silently drop those non-
+          // linear pieces.
           linearSteps === null ? (
             <Form.Item label="Шаги">
               <Typography.Paragraph type="warning">
                 Этот сценарий содержит ветвления, циклы или другие нелинейные
-                элементы. Конструктор не поддерживает такие графы — используйте
-                режим «Блок-схема».
+                элементы. Конструктор работает только с линейными цепочками —
+                откройте режим «Блок-схема».
               </Typography.Paragraph>
             </Form.Item>
           ) : (

@@ -13,6 +13,7 @@ import {
   CheckOutlined,
   ClockCircleOutlined,
   EyeOutlined,
+  LinkOutlined,
   PlayCircleOutlined,
   PoweroffOutlined,
   QuestionCircleOutlined,
@@ -27,6 +28,7 @@ import type {
   DecisionNodeData,
   LoopBackNodeData,
   ScreenCheckNodeData,
+  SubScenarioNodeData,
   WaitNodeData,
 } from "./types";
 
@@ -188,7 +190,7 @@ export function DecisionNode({ data }: NodeProps) {
         </div>
       </div>
       {/* Two source handles — left = false / "no", right = true / "yes".
-          PER-83 will associate these with edge.condition explicitly. */}
+          Edge conditions decide which one to take. */}
       <Handle
         id="false"
         type="source"
@@ -304,6 +306,45 @@ export function LoopBackNode({ data }: NodeProps) {
   );
 }
 
+// ─────────────────────────────────────── Sub-scenario (rounded brick)
+
+export function SubScenarioNode({ data }: NodeProps) {
+  const { token } = theme.useToken();
+  const d = (data ?? {}) as SubScenarioNodeData;
+  // Use the info-bg token + double border to set the sub-scenario
+  // visually apart. Brand purple-ish accent on the icon; falls back
+  // to colorInfo if the variant doesn't exist in the token set.
+  return (
+    <div
+      style={{
+        minWidth: 200,
+        maxWidth: 240,
+        background: token.colorInfoBg,
+        border: `2px double ${token.colorInfo}`,
+        borderRadius: 12,
+        padding: "10px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <LinkOutlined style={{ color: token.colorInfo }} />
+        <Typography.Text strong style={{ fontSize: 12 }}>
+          Связанный сценарий
+        </Typography.Text>
+      </div>
+      <Typography.Text style={{ fontSize: 13 }}>
+        {d.linked_scenario_title || (
+          <em style={{ opacity: 0.6 }}>(не выбран)</em>
+        )}
+      </Typography.Text>
+      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+    </div>
+  );
+}
+
 // Re-exported map consumed by ReactFlow's `nodeTypes` prop. Including
 // here so any new node type only has to register in one place.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -315,6 +356,7 @@ export const SCENARIO_NODE_TYPES = {
   wait: WaitNode,
   screen_check: ScreenCheckNode,
   loop_back: LoopBackNode,
+  sub_scenario: SubScenarioNode,
 };
 
 // Suppress "unused" warning on the imports of icons we expose for

@@ -45,6 +45,82 @@ function reachable(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
 }
 
 /**
+ * Detect every directed cycle in the graph. By default a scenario
+ * must be acyclic — the agent walks from start to end and shouldn't
+ * loop back. The exception is a back-edge explicitly marked with
+ * ``data.loop = true``: those represent intended retry / repeat
+ * structures and the worker tracks them with a max-iterations cap.
+ *
+ * Returns the set of node ids that participate in an unmarked
+ * cycle. The editor uses this to highlight the offending vertices.
+ */
+function findUnmarkedCycleNodes(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): Set<string> {
+  const ids = nodes.map((n) => n.id);
+  // Adjacency restricted to NON-loop edges. A cycle that involves at
+  // least one ``loop=true`` edge is allowed by design — the worker
+  // counts iterations and bails after max_iterations.
+  const out = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.data?.loop) continue;
+    const list = out.get(e.source) ?? [];
+    list.push(e.target);
+    out.set(e.source, list);
+  }
+
+  // Standard Tarjan SCC over the loop-edge-stripped graph: any SCC
+  // larger than one node, or a one-node SCC that has a self-edge,
+  // is a real cycle in the strict scenario.
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  let counter = 0;
+  const offending = new Set<string>();
+
+  const strongconnect = (v: string): void => {
+    index.set(v, counter);
+    low.set(v, counter);
+    counter++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of out.get(v) ?? []) {
+      if (!index.has(w)) {
+        strongconnect(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v)!, index.get(w)!));
+      }
+    }
+    if (low.get(v) === index.get(v)) {
+      const component: string[] = [];
+      let w: string | undefined;
+      do {
+        w = stack.pop();
+        if (w !== undefined) {
+          onStack.delete(w);
+          component.push(w);
+        }
+      } while (w !== undefined && w !== v);
+      const isCycle =
+        component.length > 1 ||
+        (component.length === 1 &&
+          (out.get(component[0]) ?? []).includes(component[0]));
+      if (isCycle) {
+        for (const m of component) offending.add(m);
+      }
+    }
+  };
+
+  for (const id of ids) {
+    if (!index.has(id)) strongconnect(id);
+  }
+  return offending;
+}
+
+/**
  * Detect strongly-connected components that don't have an exit edge
  * leading to a node outside the component. Such SCCs are infinite
  * loops at runtime.
@@ -249,15 +325,48 @@ export function validateGraph(graph: ScenarioGraphV2): ValidationIssue[] {
     }
   }
 
-  // Loops without exit.
-  const noExit = findLoopsWithoutExit(nodes, edges);
-  for (const id of noExit) {
+  // Cycles without an explicit back-edge marker. The runtime would
+  // either loop forever or rely on the worker's safety cap to stop —
+  // both are surprises we'd rather flag at edit time.
+  const inCycle = findUnmarkedCycleNodes(nodes, edges);
+  const flagged = new Set<string>();
+  for (const id of inCycle) {
+    if (flagged.has(id)) continue;
+    flagged.add(id);
     const n = nodes.find((x) => x.id === id);
     issues.push({
       severity: "error",
       target: `node:${id}`,
-      message: `Узел «${labelFor(n!) }» в цикле без выхода — рантайм заблокируется.`,
+      message: `Узел «${labelFor(n!)}» участвует в цикле. Если это намеренно — отметьте обратную стрелку «back-edge» в редакторе стрелки.`,
     });
+  }
+
+  // Even cycles WITH a back-edge still need an exit — otherwise the
+  // worker spends max_iterations runs and gives up. Keep the existing
+  // SCC-without-exit check for that case.
+  const noExit = findLoopsWithoutExit(nodes, edges);
+  for (const id of noExit) {
+    if (inCycle.has(id)) continue; // already flagged as unmarked cycle
+    const n = nodes.find((x) => x.id === id);
+    issues.push({
+      severity: "error",
+      target: `node:${id}`,
+      message: `Узел «${labelFor(n!)}» в цикле без выхода — добавьте ветку, которая выводит из цикла.`,
+    });
+  }
+
+  // Sub-scenario nodes need a linked scenario.
+  for (const n of nodes) {
+    if (n.type === "sub_scenario") {
+      const id = (n.data as { linked_scenario_id?: string })?.linked_scenario_id;
+      if (!id) {
+        issues.push({
+          severity: "error",
+          target: `node:${n.id}`,
+          message: `У узла «Связанный сценарий» не выбран целевой сценарий.`,
+        });
+      }
+    }
   }
 
   return issues;
@@ -266,6 +375,16 @@ export function validateGraph(graph: ScenarioGraphV2): ValidationIssue[] {
 function labelFor(n: GraphNode): string {
   if (n.type === "start") return "Начало";
   if (n.type === "end") return "Конец";
+  if (n.type === "sub_scenario") {
+    const d = n.data as { linked_scenario_title?: string };
+    return d.linked_scenario_title
+      ? `Связанный: ${d.linked_scenario_title}`
+      : "Связанный сценарий";
+  }
+  if (n.type === "decision") return "Условие";
+  if (n.type === "wait") return "Пауза";
+  if (n.type === "screen_check") return "Проверка экрана";
+  if (n.type === "loop_back") return "Возврат";
   const data = n.data as { element_label?: string; label?: string };
   return data.element_label || data.label || n.id;
 }

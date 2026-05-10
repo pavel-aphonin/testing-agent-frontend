@@ -1,18 +1,21 @@
 /**
- * Visual scenario graph editor (PER-82).
+ * Visual scenario graph editor.
  *
- * Replaces the old linear FlowchartEditor. Users build the scenario by:
- *  1. Adding nodes from the palette toolbar (Action, Decision, Wait,
- *     Screen check, Loop back).
- *  2. Dragging from a source handle to a target handle to wire edges.
- *  3. Selecting a node → right-side Drawer for editing fields.
- *  4. Selecting a node + Backspace / Del → removes node and any
- *     incident edges.
+ * Miro-/Lucidchart-style canvas:
+ *  - Empty canvas starts with a centred "add the first node" CTA.
+ *  - Drag from a node's handle into empty space → a floating shape
+ *    picker pops up at the drop location → choosing a shape creates
+ *    that node + the connecting edge in one gesture.
+ *  - Drag from a handle directly onto another node's handle → just
+ *    the edge is added (standard React Flow behaviour).
+ *  - Click a node or edge → right-side editor drawer.
+ *  - Selected non-start/end node + Delete/Backspace → removes node
+ *    plus incident edges.
  *
  * The component is fully controlled: parent passes the v2 graph in
  * `value` and receives a fresh graph in `onChange`. Position changes
- * (drag inside canvas) are debounced into the same onChange so the
- * parent's "isDirty" flag is set and the layout persists.
+ * (drag inside canvas) flow through the same onChange so the parent's
+ * dirty-flag tracks layout edits too.
  */
 
 import {
@@ -22,6 +25,10 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
+  LinkOutlined,
+  PlayCircleOutlined,
+  PoweroffOutlined,
+  QuestionCircleOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import {
@@ -29,9 +36,11 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  ReactFlowProvider,
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
@@ -43,6 +52,7 @@ import {
   Alert,
   Button,
   Drawer,
+  Empty,
   Form,
   Input,
   InputNumber,
@@ -53,7 +63,7 @@ import {
   Typography,
   theme,
 } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useThemeStore } from "@/store/theme";
 
@@ -77,16 +87,72 @@ interface Props {
   /** Variables available for {{test_data.X}} autocomplete in input/value
    *  fields. Optional — when omitted, plain Input is used. */
   variables?: { key: string; value?: string }[];
+  /** All other scenarios in the workspace (for sub_scenario links).
+   *  When undefined, sub_scenario nodes are still creatable but the
+   *  link picker shows an empty list. */
+  allScenarios?: { id: string; title: string }[];
+  /** Id of the scenario currently being edited — excluded from the
+   *  sub_scenario picker so it can't reference itself. */
+  currentScenarioId?: string;
   height?: number;
 }
 
-// Palette buttons → which node-type to add.
-const PALETTE: { type: GraphNodeType; icon: React.ReactNode; label: string }[] = [
-  { type: "action", icon: <ThunderboltOutlined />, label: "Действие" },
-  { type: "decision", icon: <BranchesOutlined />, label: "Условие" },
-  { type: "wait", icon: <ClockCircleOutlined />, label: "Пауза" },
-  { type: "screen_check", icon: <EyeOutlined />, label: "Проверить экран" },
-  { type: "loop_back", icon: <ArrowLeftOutlined />, label: "Цикл" },
+/** Shape choices shown in the picker that pops up after dropping a
+ *  drag in empty space, and in the empty-canvas first-node CTA. */
+const SHAPES: {
+  type: GraphNodeType;
+  label: string;
+  hint: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    type: "start",
+    label: "Начало",
+    hint: "Точка входа в сценарий. Должна быть одна.",
+    icon: <PlayCircleOutlined />,
+  },
+  {
+    type: "action",
+    label: "Действие",
+    hint: "Тап / ввод / свайп / проверка элемента.",
+    icon: <ThunderboltOutlined />,
+  },
+  {
+    type: "decision",
+    label: "Условие",
+    hint: "Ветвление по выражению на исходящих стрелках.",
+    icon: <BranchesOutlined />,
+  },
+  {
+    type: "wait",
+    label: "Пауза",
+    hint: "Ждать заданное число миллисекунд.",
+    icon: <ClockCircleOutlined />,
+  },
+  {
+    type: "screen_check",
+    label: "Проверить экран",
+    hint: "Сверить текущий экран с описанием через ИИ.",
+    icon: <EyeOutlined />,
+  },
+  {
+    type: "sub_scenario",
+    label: "Связанный сценарий",
+    hint: "Запустить другой сценарий и вернуться сюда.",
+    icon: <LinkOutlined />,
+  },
+  {
+    type: "loop_back",
+    label: "Возврат",
+    hint: "Указатель «вернуться в начало цикла». Используется в паре с back-edge.",
+    icon: <ArrowLeftOutlined />,
+  },
+  {
+    type: "end",
+    label: "Конец",
+    hint: "Точка выхода. Может быть несколько (но обычно одна).",
+    icon: <PoweroffOutlined />,
+  },
 ];
 
 // Default field values for each new node type.
@@ -102,6 +168,8 @@ function defaultDataFor(type: GraphNodeType): Record<string, unknown> {
       return { screen_description: "" };
     case "loop_back":
       return { max_iterations: 10 };
+    case "sub_scenario":
+      return { linked_scenario_id: undefined };
     default:
       return {};
   }
@@ -109,9 +177,55 @@ function defaultDataFor(type: GraphNodeType): Record<string, unknown> {
 
 // ──────────────────────────────────────────────────────────────────────
 
-export function GraphEditor({ value, onChange, variables, height = 600 }: Props) {
+// Outer wrapper exposes a ReactFlowProvider so the inner component can
+// call ``useReactFlow`` for screen↔flow coordinate conversion. Without
+// this wrapper the hook throws — the React Flow context is only set
+// up inside <ReactFlowProvider> or below a <ReactFlow> render.
+export function GraphEditor(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <GraphEditorInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphEditorInner({
+  value,
+  onChange,
+  variables,
+  allScenarios,
+  currentScenarioId,
+  height = 600,
+}: Props) {
   const { token } = theme.useToken();
   const themeMode = useThemeStore((s) => s.resolved);
+  const rfApi = useReactFlow();
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  // Tracks the source of an in-progress drag from a handle. Set on
+  // onConnectStart, cleared on onConnectEnd. When the drag ends in
+  // empty pane we use this id as the source of the new edge.
+  const connectStartRef = useRef<{ nodeId: string; handleId?: string | null } | null>(
+    null,
+  );
+
+  // Floating shape picker. ``screenX/Y`` are viewport coords for the
+  // popup placement; ``flowX/Y`` are graph coords for the new node.
+  // ``sourceId`` is set when invoked from a drag-from-handle drop;
+  // null when invoked from the empty-canvas CTA (first node).
+  const [picker, setPicker] = useState<
+    | {
+        screenX: number;
+        screenY: number;
+        flowX: number;
+        flowY: number;
+        sourceId: string | null;
+        sourceHandle: string | null;
+      }
+    | null
+  >(null);
+  // Mode for the help drawer (step 6).
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // React Flow expects its own Node/Edge shape. We keep our v2 model
   // as the source of truth and translate on each render — cheap, and
@@ -328,23 +442,118 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
     [value, onChange, rfEdges],
   );
 
-  // Add a new node from the palette. Position it just below the
-  // current centre so it's visible without colliding with start/end
-  // by default. Auto-layout (dagre) is left for a follow-up.
-  const handleAddNode = useCallback(
-    (type: GraphNodeType) => {
+  // ────────────────────────── Drag-to-create handlers
+  // React Flow's connect lifecycle:
+  //   * onConnectStart fires when the user grabs a handle. We capture
+  //     the source so we can use it later if the drop misses any
+  //     real target.
+  //   * onConnectEnd fires once at the end of the gesture, regardless
+  //     of where the cursor went. If the drop landed on another
+  //     handle, ``onConnect`` already handled the wiring; we detect
+  //     "fell into empty pane" by inspecting the event target.
+
+  const handleConnectStart = useCallback<
+    NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectStart"]>
+  >((_event, params) => {
+    if (params.handleType === "source" && params.nodeId) {
+      connectStartRef.current = {
+        nodeId: params.nodeId,
+        handleId: params.handleId ?? null,
+      };
+    } else {
+      connectStartRef.current = null;
+    }
+  }, []);
+
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      const start = connectStartRef.current;
+      connectStartRef.current = null;
+      if (!start) return;
+      // If the drop hit a real handle, onConnect already created the
+      // edge. We're here to handle the "dropped into nothing" case —
+      // the target's class will be the React Flow pane.
+      const target = event.target as HTMLElement | null;
+      const droppedOnPane = !!target?.classList?.contains("react-flow__pane");
+      if (!droppedOnPane) return;
+
+      const point =
+        "touches" in event && event.touches.length > 0
+          ? { x: event.touches[0].clientX, y: event.touches[0].clientY }
+          : "changedTouches" in event && event.changedTouches.length > 0
+          ? { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY }
+          : { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
+      const flow = rfApi.screenToFlowPosition(point);
+      setPicker({
+        screenX: point.x,
+        screenY: point.y,
+        flowX: flow.x,
+        flowY: flow.y,
+        sourceId: start.nodeId,
+        sourceHandle: start.handleId ?? null,
+      });
+    },
+    [rfApi],
+  );
+
+  // Empty-canvas first-node CTA: when the user clicks the centre of
+  // an empty pane we open the picker without a source so the chosen
+  // shape is added free-floating.
+  const openEmptyPicker = useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const flow = rfApi.screenToFlowPosition({ x: cx, y: cy });
+    setPicker({
+      screenX: cx,
+      screenY: cy,
+      flowX: flow.x,
+      flowY: flow.y,
+      sourceId: null,
+      sourceHandle: null,
+    });
+  }, [rfApi]);
+
+  /**
+   * Create a node at the given graph-coordinate position. When
+   * ``sourceId`` is provided, also wire a fresh edge from that
+   * source to the new node — used by the drag-to-empty-pane flow.
+   *
+   * Refuses to create a second start node (only one start is valid).
+   * Centers the node on the supplied position so the cursor lands in
+   * its middle (more natural feel than offsetting away).
+   */
+  const addNodeAt = useCallback(
+    (
+      type: GraphNodeType,
+      flowPos: { x: number; y: number },
+      sourceId: string | null,
+      sourceHandle: string | null,
+    ) => {
+      if (
+        type === "start" &&
+        value.nodes.some((n) => n.type === "start")
+      ) {
+        return;
+      }
       const id = newNodeId(type[0]);
-      const ys = value.nodes.map((n) => n.position?.y ?? 0);
-      const maxY = Math.max(...ys, 0);
       const node: GraphNode = {
         id,
         type,
-        position: { x: 200, y: maxY + 120 },
+        position: { x: flowPos.x - 80, y: flowPos.y - 24 },
         data: defaultDataFor(type),
       };
-      onChange({ ...value, nodes: [...value.nodes, node] });
-      // Auto-select so the user goes straight into editing the fresh
-      // node without an extra click.
+      const edges: GraphEdge[] = [...value.edges];
+      if (sourceId) {
+        edges.push({
+          id: `e_${sourceId}_${id}`,
+          source: sourceId,
+          target: id,
+          data: sourceHandle ? { branch: sourceHandle } : {},
+        });
+      }
+      onChange({ ...value, nodes: [...value.nodes, node], edges });
       setSelectedId(id);
     },
     [value, onChange],
@@ -390,19 +599,21 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
 
   return (
     <>
-      {/* ─── Palette toolbar ───────────────────────────────────── */}
+      {/* ─── Compact toolbar ─────────────────────────────────────
+          The Miro-style canvas does most of the heavy lifting via
+          drag-from-handle interactions, so the toolbar only carries
+          two affordances: delete-selected (also bound to Backspace)
+          and a "?" that opens the shape glossary. */}
       <Space wrap style={{ marginBottom: 8 }}>
-        {PALETTE.map((p) => (
-          <Tooltip key={p.type} title={`Добавить: ${p.label}`}>
-            <Button
-              icon={p.icon}
-              onClick={() => handleAddNode(p.type)}
-              size="small"
-            >
-              {p.label}
-            </Button>
-          </Tooltip>
-        ))}
+        <Tooltip title="Подсказка по фигурам">
+          <Button
+            icon={<QuestionCircleOutlined />}
+            size="small"
+            onClick={() => setHelpOpen(true)}
+          >
+            Что есть что
+          </Button>
+        </Tooltip>
         {selected && selected.type !== "start" && selected.type !== "end" && (
           <Tooltip title="Удалить выделенный узел (Backspace)">
             <Button
@@ -416,11 +627,11 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           </Tooltip>
         )}
         <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-          <ApartmentOutlined /> Соединить узлы — потяните мышью от точки к точке.
+          <ApartmentOutlined /> Потяните мышью от точки на узле — там, где отпустите, появится выбор фигур.
         </Typography.Text>
       </Space>
 
-      {/* ─── Validation banner (PER-84) ────────────────────────── */}
+      {/* ─── Validation banner ─────────────────────────────────── */}
       {(errors.length > 0 || warnings.length > 0) && (
         <Alert
           type={errors.length > 0 ? "error" : "warning"}
@@ -457,11 +668,13 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
 
       {/* ─── Canvas ────────────────────────────────────────────── */}
       <div
+        ref={canvasRef}
         style={{
           height,
           border: `1px solid ${token.colorBorderSecondary}`,
           borderRadius: 8,
           background: token.colorFillQuaternary,
+          position: "relative",
         }}
       >
         <ReactFlow
@@ -470,6 +683,8 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
+          onConnectStart={handleConnectStart}
+          onConnectEnd={handleConnectEnd}
           onNodeClick={(_, n) => {
             setSelectedId(n.id);
             setSelectedEdgeId(null);
@@ -481,6 +696,7 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           onPaneClick={() => {
             setSelectedId(null);
             setSelectedEdgeId(null);
+            setPicker(null);
           }}
           nodeTypes={SCENARIO_NODE_TYPES}
           fitView
@@ -491,21 +707,94 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
         >
           <Background />
           <Controls />
-          <MiniMap
-            pannable
-            zoomable
-            maskColor={
-              themeMode === "dark"
-                ? "rgba(0, 0, 0, 0.6)"
-                : "rgba(240, 240, 240, 0.6)"
-            }
-            nodeColor={() => token.colorPrimary}
-            style={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-            }}
-          />
+          {/* MiniMap is overkill for an empty canvas — hide until we
+              actually have nodes to map. */}
+          {value.nodes.length > 0 && (
+            <MiniMap
+              pannable
+              zoomable
+              maskColor={
+                themeMode === "dark"
+                  ? "rgba(0, 0, 0, 0.6)"
+                  : "rgba(240, 240, 240, 0.6)"
+              }
+              nodeColor={() => token.colorPrimary}
+              style={{
+                background: token.colorBgElevated,
+                border: `1px solid ${token.colorBorderSecondary}`,
+              }}
+            />
+          )}
         </ReactFlow>
+
+        {/* Empty-canvas CTA. The user has to add SOMETHING before
+            they can drag-to-create, so we offer one obvious entry
+            point right at the centre of the empty pane. */}
+        {value.nodes.length === 0 && !picker && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                pointerEvents: "auto",
+                textAlign: "center",
+                padding: 24,
+                borderRadius: 12,
+                background: token.colorBgElevated,
+                border: `1px dashed ${token.colorBorder}`,
+                maxWidth: 380,
+              }}
+            >
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={
+                  <span>
+                    Холст пуст. Начните со «Старта» — потом потяните стрелку,
+                    чтобы добавить следующий узел.
+                  </span>
+                }
+              />
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={openEmptyPicker}
+                style={{ marginTop: 8 }}
+              >
+                Добавить первый узел
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Floating shape picker — appears at the drop position when
+            the user releases a connect-drag in empty space, or in
+            the canvas centre via the empty-state CTA. */}
+        {picker && (
+          <ShapePicker
+            picker={picker}
+            existingHasStart={value.nodes.some((n) => n.type === "start")}
+            onPick={(type) => {
+              addNodeAt(
+                type,
+                { x: picker.flowX, y: picker.flowY },
+                picker.sourceId,
+                picker.sourceHandle,
+              );
+              setPicker(null);
+            }}
+            onCancel={() => setPicker(null)}
+          />
+        )}
       </div>
 
       {/* ─── Edit drawer ───────────────────────────────────────── */}
@@ -520,17 +809,19 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           <NodeEditor
             node={selected}
             variables={variables}
+            allScenarios={allScenarios}
+            currentScenarioId={currentScenarioId}
             onChange={handleSelectedDataChange}
           />
         )}
       </Drawer>
 
-      {/* ─── Edge edit drawer (PER-83) ─────────────────────────── */}
+      {/* ─── Edge edit drawer ──────────────────────────────────── */}
       <Drawer
         open={selectedEdge !== null}
         onClose={() => setSelectedEdgeId(null)}
         width={420}
-        title="Ребро (переход)"
+        title="Стрелка (переход)"
         destroyOnHidden
       >
         {selectedEdge && (
@@ -547,7 +838,185 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           />
         )}
       </Drawer>
+
+      {/* ─── Help drawer ───────────────────────────────────────── */}
+      <Drawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        width={460}
+        title="Подсказка по фигурам"
+        destroyOnHidden
+      >
+        <ShapeHelp />
+      </Drawer>
     </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Shape picker — floating popup for the drag-to-create flow.
+
+function ShapePicker({
+  picker,
+  existingHasStart,
+  onPick,
+  onCancel,
+}: {
+  picker: {
+    screenX: number;
+    screenY: number;
+    flowX: number;
+    flowY: number;
+    sourceId: string | null;
+    sourceHandle: string | null;
+  };
+  existingHasStart: boolean;
+  onPick: (type: GraphNodeType) => void;
+  onCancel: () => void;
+}) {
+  // The picker lives in viewport coords (position: fixed) so its
+  // placement is straightforward — just use the captured screen
+  // position. We also dim the rest of the canvas with a click-to-
+  // dismiss backdrop so the user can opt out of the gesture.
+  const { token } = theme.useToken();
+
+  // Filter shapes:
+  //  * always hide ``start`` from the inline picker when one already
+  //    exists (only one start is valid per scenario)
+  //  * always hide the duplicate ``end`` when the picker was invoked
+  //    from a drag — adding an end requires an explicit drop, which
+  //    is what the inline picker is, so we keep it visible there.
+  const items = SHAPES.filter((s) => {
+    if (s.type === "start" && existingHasStart) return false;
+    return true;
+  });
+
+  // Clamp horizontally so the menu doesn't fall off the viewport
+  // edge for drops near the right.
+  const left = Math.min(picker.screenX + 12, window.innerWidth - 220);
+  const top = Math.min(picker.screenY - 8, window.innerHeight - 320);
+
+  return (
+    <>
+      <div
+        // Backdrop catches outside clicks; transparent so the canvas
+        // is still visible underneath.
+        onClick={onCancel}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 999,
+        }}
+      />
+      <div
+        style={{
+          position: "fixed",
+          top,
+          left,
+          zIndex: 1000,
+          background: token.colorBgElevated,
+          border: `1px solid ${token.colorBorder}`,
+          borderRadius: 8,
+          boxShadow: token.boxShadowSecondary,
+          padding: 6,
+          width: 220,
+          maxHeight: 360,
+          overflowY: "auto",
+        }}
+      >
+        <Typography.Text
+          type="secondary"
+          style={{ fontSize: 11, padding: "2px 8px", display: "block" }}
+        >
+          Выберите фигуру
+        </Typography.Text>
+        {items.map((s) => (
+          <Tooltip key={s.type} title={s.hint} placement="right">
+            <div
+              role="button"
+              onClick={() => onPick(s.type)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                cursor: "pointer",
+                borderRadius: 6,
+                fontSize: 13,
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = token.colorFillTertiary)
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>
+                {s.icon}
+              </span>
+              <span>{s.label}</span>
+            </div>
+          </Tooltip>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// In-app glossary — explains every shape so first-time users know
+// what to pick. Surfaced via the "Что есть что" toolbar button.
+
+function ShapeHelp() {
+  const { token } = theme.useToken();
+  return (
+    <div>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+        Сценарий — это диаграмма из узлов и стрелок. Агент идёт по
+        стрелкам от «Начала» к «Концу», выполняя действия в узлах.
+      </Typography.Paragraph>
+      <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
+        {SHAPES.map((s) => (
+          <li
+            key={s.type}
+            style={{
+              display: "flex",
+              gap: 12,
+              padding: "10px 0",
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 18,
+                width: 28,
+                textAlign: "center",
+                color: token.colorPrimary,
+              }}
+            >
+              {s.icon}
+            </span>
+            <div>
+              <Typography.Text strong>{s.label}</Typography.Text>
+              <div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {s.hint}
+                </Typography.Text>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Typography.Paragraph
+        type="secondary"
+        style={{ fontSize: 12, marginTop: 12 }}
+      >
+        Соединить два узла — потяните мышью от точки на одном к точке на
+        другом. Чтобы открыть редактор узла или стрелки — кликните по
+        ним. Чтобы удалить выделенный узел — нажмите Backspace или
+        кнопку «Удалить» в верхней панели.
+      </Typography.Paragraph>
+    </div>
   );
 }
 
@@ -556,10 +1025,14 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
 function NodeEditor({
   node,
   variables,
+  allScenarios,
+  currentScenarioId,
   onChange,
 }: {
   node: GraphNode;
   variables?: { key: string; value?: string }[];
+  allScenarios?: { id: string; title: string }[];
+  currentScenarioId?: string;
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   if (node.type === "action") {
@@ -599,7 +1072,7 @@ function NodeEditor({
         </Form.Item>
         <Form.Item
           label="Описание экрана"
-          extra="Опишите экран словами на любом языке (PER-85). Если пусто — проверки нет."
+          extra="Опишите экран словами на любом языке. Если пусто — проверки нет; если заполнено, перед шагом агент сверится с реальным экраном."
         >
           <Input
             value={d.screen_description ?? ""}
@@ -623,7 +1096,7 @@ function NodeEditor({
       <Form layout="vertical">
         <Form.Item
           label="Подпись узла"
-          extra="Условия задаются на исходящих рёбрах (PER-83)."
+          extra="Условия ветвления задаются на исходящих стрелках — кликните по стрелке для редактирования."
         >
           <Input
             value={d.label ?? ""}
@@ -659,7 +1132,7 @@ function NodeEditor({
       <Form layout="vertical">
         <Form.Item
           label="Описание экрана"
-          extra="LLM сверит текущий экран с этим описанием перед следующим шагом (PER-85)."
+          extra="Агент сверит текущий экран с этим описанием перед тем, как продолжить."
         >
           <Input.TextArea
             rows={3}
@@ -689,9 +1162,49 @@ function NodeEditor({
     );
   }
 
+  if (node.type === "sub_scenario") {
+    const d = node.data as {
+      linked_scenario_id?: string;
+      linked_scenario_title?: string;
+    };
+    const options = (allScenarios ?? [])
+      .filter((s) => s.id !== currentScenarioId)
+      .map((s) => ({ value: s.id, label: s.title || s.id.slice(0, 8) }));
+    return (
+      <Form layout="vertical">
+        <Form.Item
+          label="Сценарий, который нужно запустить"
+          extra="Агент дойдёт до этого узла, выполнит выбранный сценарий целиком и вернётся, чтобы продолжить текущий."
+        >
+          <Select
+            showSearch
+            allowClear
+            placeholder="Выберите сценарий"
+            value={d.linked_scenario_id}
+            optionFilterProp="label"
+            options={options}
+            onChange={(v) => {
+              const picked = (allScenarios ?? []).find((s) => s.id === v);
+              onChange({
+                linked_scenario_id: v ?? undefined,
+                linked_scenario_title: picked?.title ?? undefined,
+              });
+            }}
+          />
+        </Form.Item>
+        {options.length === 0 && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            В этом рабочем пространстве пока нет других сценариев. Создайте
+            ещё один и вернитесь сюда — он появится в списке.
+          </Typography.Text>
+        )}
+      </Form>
+    );
+  }
+
   return (
     <Typography.Text type="secondary">
-      Узел типа «{node.type}» — без редактируемых полей.
+      Узел этого типа — без редактируемых полей.
     </Typography.Text>
   );
 }
