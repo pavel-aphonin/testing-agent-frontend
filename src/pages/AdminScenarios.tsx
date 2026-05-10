@@ -23,23 +23,11 @@ import {
   theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  type Node,
-  type Edge,
-  type NodeTypes,
-  Handle,
-  Position,
-  useNodesState,
-  useEdgesState,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+// PER-82: react-flow direct usage moved into GraphEditor — this page
+// only reads the v2 graph state now.
 
 import { notify } from "@/utils/notify";
 import { LabelWithHint } from "@/components/LabelWithHint";
@@ -53,7 +41,13 @@ import { listKnowledgeDocuments } from "@/api/knowledge";
 import { listTestData } from "@/api/testData";
 import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
 import { JsonScenarioEditor } from "@/components/JsonScenarioEditor";
-import { useThemeStore } from "@/store/theme";
+import { GraphEditor } from "@/components/scenario/graph/GraphEditor";
+import {
+  emptyGraph,
+  normalizeGraph,
+  type ScenarioGraphV2,
+  type ActionNodeData,
+} from "@/components/scenario/graph/types";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
 
@@ -63,7 +57,9 @@ const VarsCtx = createContext<{ key: string; value?: string }[]>([]);
 
 interface ScenarioStep {
   screen_name: string;
-  action: "tap" | "input" | "swipe" | "wait" | "assert";
+  // PER-82: keep this aligned with ActionVerb in the graph types so
+  // round-trips between linear and graph views don't lose actions.
+  action: "tap" | "input" | "swipe" | "wait" | "assert" | "back";
   element_label: string;
   value?: string;
   expected_result?: string;
@@ -76,13 +72,6 @@ const ACTION_OPTIONS = [
   { value: "wait", label: "Подождать" },
   { value: "assert", label: "Проверить" },
 ];
-
-const ACTION_COLORS: Record<string, string> = {
-  tap: "#1890ff", input: "#52c41a", swipe: "#faad14", wait: "#999", assert: "#eb2f96",
-};
-const ACTION_LABELS: Record<string, string> = {
-  tap: "👆 Нажать", input: "⌨️ Ввести", swipe: "👉 Свайп", wait: "⏳ Ждать", assert: "✅ Проверить",
-};
 
 // PER-70: tooltip text for each step field. Reused by both the
 // Constructor (inline) and the Flowchart edit modal.
@@ -253,301 +242,6 @@ function StepEditor({
   );
 }
 
-// ─────────────────────────── Flow Nodes ──────────────────────────────────
-
-function StartEndNode({ data }: { data: { label: string; color: string } }) {
-  return (
-    <div
-      style={{
-        width: 120,
-        height: 44,
-        borderRadius: 22,
-        background: data.color,
-        color: "#fff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 14,
-        fontWeight: 600,
-      }}
-    >
-      {data.label}
-      <Handle type="source" position={Position.Bottom} style={{ background: data.color }} />
-      <Handle type="target" position={Position.Top} style={{ background: data.color }} />
-    </div>
-  );
-}
-
-function StepNode({ data }: { data: { step: ScenarioStep; index: number; onEdit: (i: number) => void } }) {
-  const { step, index, onEdit } = data;
-  const { token } = theme.useToken();
-  const color = ACTION_COLORS[step.action] || "#1890ff";
-  const isTestData = step.value?.includes("{{");
-
-  return (
-    <div
-      onClick={() => onEdit(index)}
-      style={{
-        minWidth: 200,
-        maxWidth: 280,
-        padding: "10px 16px",
-        borderRadius: 10,
-        border: `2px solid ${color}`,
-        // PER-67: theme-token background so node stays readable in dark mode
-        background: token.colorBgContainer,
-        cursor: "pointer",
-        fontSize: 13,
-      }}
-    >
-      <Handle type="target" position={Position.Top} style={{ background: color }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <Tag color={color} style={{ margin: 0, fontSize: 11 }}>{ACTION_LABELS[step.action]}</Tag>
-        {step.screen_name && (
-          <span style={{ fontSize: 10, color: token.colorTextTertiary }}>{step.screen_name}</span>
-        )}
-      </div>
-      <div style={{ fontWeight: 600 }}>{step.element_label || "..."}</div>
-      {step.value && (
-        <div style={{ fontSize: 11, color: isTestData ? "#eb2f96" : token.colorTextSecondary, marginTop: 2 }}>
-          {isTestData ? `🔗 ${step.value}` : `= "${step.value}"`}
-        </div>
-      )}
-      {step.expected_result && (
-        <div style={{ fontSize: 11, color: "#52c41a", marginTop: 2 }}>✓ {step.expected_result}</div>
-      )}
-      <Handle type="source" position={Position.Bottom} style={{ background: color }} />
-    </div>
-  );
-}
-
-const nodeTypes: NodeTypes = {
-  startEnd: StartEndNode,
-  step: StepNode,
-};
-
-// ─────────────────────────── Flowchart Editor ────────────────────────────
-
-function FlowchartEditor({
-  steps,
-  onChange,
-  height = 500,
-}: {
-  steps: ScenarioStep[];
-  onChange: (steps: ScenarioStep[]) => void;
-  height?: number;
-}) {
-  const tdataVars = useContext(VarsCtx);
-  const { token } = theme.useToken();
-  const themeMode = useThemeStore((s) => s.resolved);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editForm] = Form.useForm();
-
-  const onEdit = useCallback(
-    (i: number) => {
-      setEditingIndex(i);
-      editForm.setFieldsValue(steps[i]);
-    },
-    [steps, editForm],
-  );
-
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const ns: Node[] = [
-      {
-        id: "start",
-        type: "startEnd",
-        position: { x: 200, y: 0 },
-        data: { label: "Начало", color: "#52c41a" },
-        draggable: true,
-      },
-    ];
-    const es: Edge[] = [];
-
-    steps.forEach((step, i) => {
-      ns.push({
-        id: `step-${i}`,
-        type: "step",
-        position: { x: 160, y: 80 + i * 130 },
-        data: { step, index: i, onEdit },
-        draggable: true,
-      });
-      es.push({
-        id: `e-${i === 0 ? "start" : `step-${i - 1}`}-step-${i}`,
-        source: i === 0 ? "start" : `step-${i - 1}`,
-        target: `step-${i}`,
-        animated: true,
-        style: { stroke: token.colorBorder, strokeWidth: 2 },
-      });
-    });
-
-    const endY = 80 + steps.length * 130;
-    ns.push({
-      id: "end",
-      type: "startEnd",
-      position: { x: 200, y: endY },
-      data: { label: "Конец", color: "#ff4d4f" },
-      draggable: true,
-    });
-    if (steps.length > 0) {
-      es.push({
-        id: `e-step-${steps.length - 1}-end`,
-        source: `step-${steps.length - 1}`,
-        target: "end",
-        animated: true,
-        style: { stroke: token.colorBorder, strokeWidth: 2 },
-      });
-    } else {
-      es.push({
-        id: "e-start-end",
-        source: "start",
-        target: "end",
-        animated: true,
-        style: { stroke: token.colorBorder, strokeWidth: 2 },
-      });
-    }
-
-    return { initialNodes: ns, initialEdges: es };
-  }, [steps, onEdit, token.colorBorder]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
-
-  const handleEditSave = () => {
-    if (editingIndex === null) return;
-    const values = editForm.getFieldsValue();
-    const next = [...steps];
-    next[editingIndex] = { ...next[editingIndex], ...values };
-    onChange(next);
-    setEditingIndex(null);
-  };
-
-  const handleEditDelete = () => {
-    if (editingIndex === null) return;
-    onChange(steps.filter((_, i) => i !== editingIndex));
-    setEditingIndex(null);
-  };
-
-  const handleAddStep = () => {
-    onChange([
-      ...steps,
-      { screen_name: "", action: "tap", element_label: "", value: "", expected_result: "" },
-    ]);
-  };
-
-  return (
-    <>
-      <div
-        style={{
-          height,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: 8,
-          // PER-67: theme-aware canvas background
-          background: token.colorFillQuaternary,
-          position: "relative",
-        }}
-      >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          proOptions={{ hideAttribution: true }}
-          colorMode={themeMode}
-        >
-          <Background />
-          {/* PER-73: full controls (zoom/fit/lock) + minimap so users
-              don't lose orientation in long scenarios. */}
-          <Controls />
-          <MiniMap
-            pannable
-            zoomable
-            maskColor={
-              themeMode === "dark" ? "rgba(0, 0, 0, 0.6)" : "rgba(240, 240, 240, 0.6)"
-            }
-            nodeColor={() => token.colorPrimary}
-            style={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-            }}
-          />
-        </ReactFlow>
-
-        <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={handleAddStep}
-          style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}
-        >
-          Добавить шаг
-        </Button>
-      </div>
-
-      <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginTop: 8 }}>
-        Нажмите на шаг для редактирования. Узлы можно перетаскивать.
-      </Typography.Text>
-
-      <Modal
-        open={editingIndex !== null}
-        title={editingIndex !== null ? `Шаг ${editingIndex + 1}` : ""}
-        onCancel={() => setEditingIndex(null)}
-        onOk={handleEditSave}
-        okText="Применить"
-        cancelText="Отмена"
-        width={520}
-        footer={(_, { OkBtn, CancelBtn }) => (
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <Button danger onClick={handleEditDelete}>Удалить шаг</Button>
-            <Space>
-              <CancelBtn />
-              <OkBtn />
-            </Space>
-          </div>
-        )}
-      >
-        <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="screen_name"
-            label={<LabelWithHint label="Экран" hint={HINTS.screen_name} />}
-          >
-            <Input placeholder="Login, Profile, Settings..." />
-          </Form.Item>
-          <Form.Item
-            name="action"
-            label={<LabelWithHint label="Действие" hint={HINTS.action} />}
-          >
-            <Select options={ACTION_OPTIONS} />
-          </Form.Item>
-          <Form.Item
-            name="element_label"
-            label={<LabelWithHint label="Элемент" hint={HINTS.element_label} />}
-          >
-            <Input placeholder="Кнопка, поле, переключатель..." />
-          </Form.Item>
-          <Form.Item
-            name="value"
-            label={<LabelWithHint label="Значение" hint={HINTS.value} />}
-          >
-            <VarAutocompleteInput variables={tdataVars} placeholder="Текст или {{test_data.key}}" />
-          </Form.Item>
-          <Form.Item
-            name="expected_result"
-            label={<LabelWithHint label="Ожидаемый результат" hint={HINTS.expected_result} />}
-          >
-            <Input placeholder="Что должно произойти" />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </>
-  );
-}
 
 // ─────────────────────────── List page (PER-66) ──────────────────────────
 
@@ -617,9 +311,12 @@ export function AdminScenarios() {
   });
 
   const handleCreate = () => {
+    // PER-82: post the empty v2 graph (start + end). Backend would
+    // normalize either shape, but sending v2 saves a redundant
+    // round-trip and keeps the wire format consistent end-to-end.
     createMutation.mutate({
       title: t("scenarios.newScenarioTitle"),
-      steps_json: { steps: [] },
+      steps_json: emptyGraph() as unknown as Record<string, unknown>,
     });
   };
 
@@ -749,8 +446,12 @@ export function AdminScenarioEdit() {
   const [form] = Form.useForm();
   const workspace = useWorkspaceStore((s) => s.current);
 
-  const [steps, setSteps] = useState<ScenarioStep[]>([]);
-  const [editorMode, setEditorMode] = useState<string>("constructor");
+  // PER-82: state model is now the v2 graph. The legacy ``steps``
+  // array is derived for the Constructor and JSON tabs when (and
+  // only when) the graph is purely linear; non-linear graphs disable
+  // those tabs to avoid data loss on round-trip.
+  const [graph, setGraph] = useState<ScenarioGraphV2>(() => emptyGraph());
+  const [editorMode, setEditorMode] = useState<string>("flowchart");
   // PER-69: track unsaved changes for the navigate-away warning
   const [isDirty, setIsDirty] = useState(false);
   const initialStateRef = useRef<string>("");
@@ -776,27 +477,117 @@ export function AdminScenarioEdit() {
     staleTime: 60_000,
   });
 
-  // Hydrate form from server when scenario loads
+  // Hydrate form from server when scenario loads. PER-82: backend
+  // returns v2; ``normalizeGraph`` is also robust to v1 just in case.
   useEffect(() => {
     if (!scenario) return;
-    const loadedSteps = (scenario.steps_json as { steps?: ScenarioStep[] })?.steps ?? [];
-    setSteps(loadedSteps);
+    const loadedGraph = normalizeGraph(scenario.steps_json);
+    setGraph(loadedGraph);
     const initial = {
       title: scenario.title,
       description: scenario.description ?? "",
       rag_document_ids: scenario.rag_document_ids ?? [],
     };
     form.setFieldsValue(initial);
-    initialStateRef.current = JSON.stringify({ ...initial, steps: loadedSteps });
+    initialStateRef.current = JSON.stringify({ ...initial, graph: loadedGraph });
     setIsDirty(false);
   }, [scenario, form]);
 
-  // PER-69: dirty tracking — any field/step change marks dirty
-  const handleStepsChange = (next: ScenarioStep[]) => {
-    setSteps(next);
+  // PER-69 + PER-82: dirty tracking on graph or form changes.
+  const handleGraphChange = (next: ScenarioGraphV2) => {
+    setGraph(next);
     setIsDirty(true);
   };
   const handleFormChange = () => setIsDirty(true);
+
+  // Derive a linear ``steps`` view of the graph for the Constructor /
+  // JSON tabs. Returns null if the graph isn't a simple chain
+  // start → action … → end (i.e. it has decisions, loops, or
+  // branching) — those tabs are then hidden / disabled to avoid
+  // round-trip data loss.
+  const linearSteps = useMemo<ScenarioStep[] | null>(() => {
+    const startNode = graph.nodes.find((n) => n.type === "start");
+    if (!startNode) return null;
+    const outgoing = new Map<string, string[]>();
+    for (const e of graph.edges) {
+      const list = outgoing.get(e.source) ?? [];
+      list.push(e.target);
+      outgoing.set(e.source, list);
+    }
+    // Each non-end node must have exactly one outgoing edge.
+    for (const n of graph.nodes) {
+      if (n.type === "end") continue;
+      if ((outgoing.get(n.id) ?? []).length !== 1) return null;
+    }
+    // All non start/end nodes must be action — anything else means
+    // the graph carries semantics the linear views can't represent.
+    for (const n of graph.nodes) {
+      if (n.type !== "start" && n.type !== "end" && n.type !== "action") {
+        return null;
+      }
+    }
+    const result: ScenarioStep[] = [];
+    let cur: string | undefined = startNode.id;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const node = graph.nodes.find((n) => n.id === cur);
+      if (!node) return null;
+      if (node.type === "end") break;
+      if (node.type === "action") {
+        const d = (node.data ?? {}) as ActionNodeData;
+        result.push({
+          screen_name: d.screen_name ?? "",
+          action: d.action ?? "tap",
+          element_label: d.element_label ?? "",
+          value: d.value,
+          expected_result: d.expected_result,
+        });
+      }
+      cur = (outgoing.get(node.id) ?? [])[0];
+    }
+    return result;
+  }, [graph]);
+
+  /** Replace the graph's action nodes with a fresh linear chain
+   *  derived from ``steps`` — used by the Constructor and JSON tabs.
+   *  Preserves start/end ids so positions persist across edits. */
+  const replaceGraphFromLinear = (steps: ScenarioStep[]) => {
+    const nodes: ScenarioGraphV2["nodes"] = [
+      { id: "start", type: "start", position: { x: 0, y: 0 }, data: {} },
+    ];
+    const edges: ScenarioGraphV2["edges"] = [];
+    let prev = "start";
+    steps.forEach((step, idx) => {
+      const id = `n${idx}`;
+      nodes.push({
+        id,
+        type: "action",
+        position: { x: 0, y: (idx + 1) * 120 },
+        data: { ...step },
+      });
+      edges.push({
+        id: `e_${prev}_${id}`,
+        source: prev,
+        target: id,
+        data: {},
+      });
+      prev = id;
+    });
+    nodes.push({
+      id: "end",
+      type: "end",
+      position: { x: 0, y: (steps.length + 1) * 120 },
+      data: {},
+    });
+    edges.push({
+      id: `e_${prev}_end`,
+      source: prev,
+      target: "end",
+      data: {},
+    });
+    handleGraphChange({ version: 2, nodes, edges });
+  };
 
   // PER-69: in-SPA navigate-away warning. We can't use react-router's
   // `useBlocker` here because the app is mounted via the legacy
@@ -853,21 +644,14 @@ export function AdminScenarioEdit() {
   const handleSave = () => {
     if (!id) return;
     form.validateFields().then((values) => {
-      const cleanSteps = steps.map((s) => {
-        const clean: ScenarioStep = {
-          screen_name: s.screen_name,
-          action: s.action,
-          element_label: s.element_label,
-        };
-        if (s.value?.trim()) clean.value = s.value.trim();
-        if (s.expected_result?.trim()) clean.expected_result = s.expected_result.trim();
-        return clean;
-      });
+      // PER-82: persist the v2 graph as-is. Backend re-validates and
+      // refuses anything malformed (e.g. multiple start nodes) with a
+      // 400 the mutation's onError already surfaces.
       updateMutation.mutate({
         payload: {
           title: values.title,
           description: values.description || undefined,
-          steps_json: { steps: cleanSteps },
+          steps_json: graph as unknown as Record<string, unknown>,
           rag_document_ids: (values.rag_document_ids ?? []).length
             ? values.rag_document_ids
             : null,
@@ -997,13 +781,25 @@ export function AdminScenarioEdit() {
 
         {editorMode === "json" ? (
           <Form.Item label="JSON">
-            {/* PER-74: Monaco-backed editor with format + {{test_data.*}} autocomplete. */}
+            {/* PER-82: edit the full v2 graph as JSON. Linear-only views
+                lost too much data; the worker now needs the graph
+                shape end-to-end. */}
             <JsonScenarioEditor
-              value={JSON.stringify({ steps }, null, 2)}
+              value={JSON.stringify(graph, null, 2)}
               onChange={(s) => {
                 try {
-                  const p = JSON.parse(s);
-                  handleStepsChange(p.steps ?? []);
+                  const parsed = JSON.parse(s);
+                  if (
+                    parsed &&
+                    Array.isArray(parsed.nodes) &&
+                    Array.isArray(parsed.edges)
+                  ) {
+                    handleGraphChange({
+                      version: 2,
+                      nodes: parsed.nodes,
+                      edges: parsed.edges,
+                    });
+                  }
                 } catch {
                   /* ignore while typing */
                 }
@@ -1013,14 +809,37 @@ export function AdminScenarioEdit() {
             />
           </Form.Item>
         ) : editorMode === "flowchart" ? (
-          <Form.Item label={`Блок-схема (${steps.length} шагов)`}>
-            {/* PER-66: bigger canvas now that the editor has the whole page */}
-            <FlowchartEditor steps={steps} onChange={handleStepsChange} height={640} />
+          <Form.Item
+            label={`Блок-схема (${graph.nodes.filter((n) => n.type === "action").length} действий)`}
+          >
+            <GraphEditor
+              value={graph}
+              onChange={handleGraphChange}
+              variables={tdataVars}
+              height={640}
+            />
           </Form.Item>
         ) : (
-          <Form.Item label={`Шаги (${steps.length})`}>
-            <StepEditor steps={steps} onChange={handleStepsChange} />
-          </Form.Item>
+          // PER-82: Constructor tab is a flat list of action steps.
+          // Disabled when the graph has branching/loops because
+          // serialising back into a linear chain would silently drop
+          // those non-linear pieces.
+          linearSteps === null ? (
+            <Form.Item label="Шаги">
+              <Typography.Paragraph type="warning">
+                Этот сценарий содержит ветвления, циклы или другие нелинейные
+                элементы. Конструктор не поддерживает такие графы — используйте
+                режим «Блок-схема».
+              </Typography.Paragraph>
+            </Form.Item>
+          ) : (
+            <Form.Item label={`Шаги (${linearSteps.length})`}>
+              <StepEditor
+                steps={linearSteps}
+                onChange={(next) => replaceGraphFromLinear(next)}
+              />
+            </Form.Item>
+          )
         )}
       </Form>
     </VarsCtx.Provider>

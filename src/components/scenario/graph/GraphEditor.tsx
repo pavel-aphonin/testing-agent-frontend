@@ -1,0 +1,540 @@
+/**
+ * Visual scenario graph editor (PER-82).
+ *
+ * Replaces the old linear FlowchartEditor. Users build the scenario by:
+ *  1. Adding nodes from the palette toolbar (Action, Decision, Wait,
+ *     Screen check, Loop back).
+ *  2. Dragging from a source handle to a target handle to wire edges.
+ *  3. Selecting a node → right-side Drawer for editing fields.
+ *  4. Selecting a node + Backspace / Del → removes node and any
+ *     incident edges.
+ *
+ * The component is fully controlled: parent passes the v2 graph in
+ * `value` and receives a fresh graph in `onChange`. Position changes
+ * (drag inside canvas) are debounced into the same onChange so the
+ * parent's "isDirty" flag is set and the layout persists.
+ */
+
+import {
+  ApartmentOutlined,
+  ArrowLeftOutlined,
+  BranchesOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
+import {
+  Background,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  type Connection,
+  type Edge,
+  type Node,
+  type NodeChange,
+  type EdgeChange,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import {
+  Button,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Tooltip,
+  Typography,
+  theme,
+} from "antd";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useThemeStore } from "@/store/theme";
+
+import { SCENARIO_NODE_TYPES } from "./nodes";
+import {
+  ACTION_VERBS,
+  newNodeId,
+  type ActionNodeData,
+  type GraphEdge,
+  type GraphNode,
+  type GraphNodeType,
+  type ScenarioGraphV2,
+} from "./types";
+
+// ──────────────────────────────────────────────────────────────────────
+
+interface Props {
+  value: ScenarioGraphV2;
+  onChange: (next: ScenarioGraphV2) => void;
+  /** Variables available for {{test_data.X}} autocomplete in input/value
+   *  fields. Optional — when omitted, plain Input is used. */
+  variables?: { key: string; value?: string }[];
+  height?: number;
+}
+
+// Palette buttons → which node-type to add.
+const PALETTE: { type: GraphNodeType; icon: React.ReactNode; label: string }[] = [
+  { type: "action", icon: <ThunderboltOutlined />, label: "Действие" },
+  { type: "decision", icon: <BranchesOutlined />, label: "Условие" },
+  { type: "wait", icon: <ClockCircleOutlined />, label: "Пауза" },
+  { type: "screen_check", icon: <EyeOutlined />, label: "Проверить экран" },
+  { type: "loop_back", icon: <ArrowLeftOutlined />, label: "Цикл" },
+];
+
+// Default field values for each new node type.
+function defaultDataFor(type: GraphNodeType): Record<string, unknown> {
+  switch (type) {
+    case "action":
+      return { action: "tap", element_label: "" } as ActionNodeData;
+    case "decision":
+      return { label: "Условие" };
+    case "wait":
+      return { ms: 1000 };
+    case "screen_check":
+      return { screen_description: "" };
+    case "loop_back":
+      return { max_iterations: 10 };
+    default:
+      return {};
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+
+export function GraphEditor({ value, onChange, variables, height = 600 }: Props) {
+  const { token } = theme.useToken();
+  const themeMode = useThemeStore((s) => s.resolved);
+
+  // React Flow expects its own Node/Edge shape. We keep our v2 model
+  // as the source of truth and translate on each render — cheap, and
+  // saves us from writing diff-detection code.
+  const rfNodes: Node[] = useMemo(
+    () =>
+      value.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: n.data as Record<string, unknown>,
+        // start + end are not deletable to keep the graph well-formed.
+        deletable: n.type !== "start" && n.type !== "end",
+      })),
+    [value.nodes],
+  );
+  const rfEdges: Edge[] = useMemo(
+    () =>
+      value.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        // Loop edges drawn dashed + warning colour as a visual hint —
+        // PER-84 will style this more carefully.
+        animated: !e.data?.loop,
+        style: e.data?.loop
+          ? { stroke: token.colorWarning, strokeDasharray: "5 5", strokeWidth: 2 }
+          : { stroke: token.colorTextTertiary, strokeWidth: 1.5 },
+        label: e.data?.label,
+      })),
+    [value.edges, token],
+  );
+
+  // Selected node — drives the right-side editor drawer.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = useMemo(
+    () => (selectedId ? value.nodes.find((n) => n.id === selectedId) ?? null : null),
+    [selectedId, value.nodes],
+  );
+
+  // Apply React Flow's incremental changes back into the v2 model.
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const next = applyNodeChanges(changes, rfNodes);
+      onChange({
+        ...value,
+        nodes: next.map<GraphNode>((n) => {
+          const original = value.nodes.find((x) => x.id === n.id);
+          return {
+            id: n.id,
+            type: (n.type ?? original?.type ?? "action") as GraphNodeType,
+            position: n.position ?? original?.position ?? { x: 0, y: 0 },
+            data: (n.data ?? original?.data ?? {}) as Record<string, unknown>,
+          };
+        }),
+        // Drop edges that lost an endpoint (React Flow doesn't auto-prune
+        // on node removal in v12).
+        edges: value.edges.filter((e) => {
+          const removed = changes.some(
+            (c) => c.type === "remove" && (c.id === e.source || c.id === e.target),
+          );
+          return !removed;
+        }),
+      });
+    },
+    [rfNodes, value, onChange],
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const next = applyEdgeChanges(changes, rfEdges);
+      onChange({
+        ...value,
+        edges: next.map<GraphEdge>((e) => {
+          const original = value.edges.find((x) => x.id === e.id);
+          return {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            data: original?.data ?? {},
+          };
+        }),
+      });
+    },
+    [rfEdges, value, onChange],
+  );
+
+  // Drag-to-connect: parent decides whether the connection is allowed.
+  // For now we accept anything except a self-loop on a non-loop_back
+  // node (full validation lives in PER-84).
+  const handleConnect = useCallback(
+    (conn: Connection) => {
+      if (!conn.source || !conn.target) return;
+      if (conn.source === conn.target) {
+        const node = value.nodes.find((n) => n.id === conn.source);
+        if (node?.type !== "loop_back") return; // refuse trivial self-loop
+      }
+      const newEdge: GraphEdge = {
+        id: `e_${conn.source}_${conn.target}_${Math.random().toString(36).slice(2, 6)}`,
+        source: conn.source,
+        target: conn.target,
+        data: {},
+      };
+      onChange({
+        ...value,
+        edges: addEdge(
+          {
+            id: newEdge.id,
+            source: newEdge.source,
+            target: newEdge.target,
+            data: newEdge.data,
+          },
+          rfEdges,
+        ).map<GraphEdge>((e) => {
+          const matched =
+            e.id === newEdge.id
+              ? newEdge
+              : value.edges.find((x) => x.id === e.id);
+          return matched ?? {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            data: {},
+          };
+        }),
+      });
+    },
+    [value, onChange, rfEdges],
+  );
+
+  // Add a new node from the palette. Position it just below the
+  // current centre so it's visible without colliding with start/end
+  // by default. Auto-layout (dagre) is left for a follow-up.
+  const handleAddNode = useCallback(
+    (type: GraphNodeType) => {
+      const id = newNodeId(type[0]);
+      const ys = value.nodes.map((n) => n.position?.y ?? 0);
+      const maxY = Math.max(...ys, 0);
+      const node: GraphNode = {
+        id,
+        type,
+        position: { x: 200, y: maxY + 120 },
+        data: defaultDataFor(type),
+      };
+      onChange({ ...value, nodes: [...value.nodes, node] });
+      // Auto-select so the user goes straight into editing the fresh
+      // node without an extra click.
+      setSelectedId(id);
+    },
+    [value, onChange],
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selected || selected.type === "start" || selected.type === "end") return;
+    onChange({
+      ...value,
+      nodes: value.nodes.filter((n) => n.id !== selected.id),
+      edges: value.edges.filter(
+        (e) => e.source !== selected.id && e.target !== selected.id,
+      ),
+    });
+    setSelectedId(null);
+  }, [selected, value, onChange]);
+
+  // Persist edits from the drawer into the model.
+  const handleSelectedDataChange = (patch: Record<string, unknown>) => {
+    if (!selected) return;
+    onChange({
+      ...value,
+      nodes: value.nodes.map((n) =>
+        n.id === selected.id ? { ...n, data: { ...n.data, ...patch } } : n,
+      ),
+    });
+  };
+
+  // Keyboard shortcut: Delete / Backspace removes selected node.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if ((ev.key === "Delete" || ev.key === "Backspace") && selected) {
+        // Don't steal Backspace from inputs.
+        const tag = (ev.target as HTMLElement | null)?.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea") return;
+        ev.preventDefault();
+        handleDeleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, handleDeleteSelected]);
+
+  return (
+    <>
+      {/* ─── Palette toolbar ───────────────────────────────────── */}
+      <Space wrap style={{ marginBottom: 8 }}>
+        {PALETTE.map((p) => (
+          <Tooltip key={p.type} title={`Добавить: ${p.label}`}>
+            <Button
+              icon={p.icon}
+              onClick={() => handleAddNode(p.type)}
+              size="small"
+            >
+              {p.label}
+            </Button>
+          </Tooltip>
+        ))}
+        {selected && selected.type !== "start" && selected.type !== "end" && (
+          <Tooltip title="Удалить выделенный узел (Backspace)">
+            <Button
+              danger
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={handleDeleteSelected}
+            >
+              Удалить
+            </Button>
+          </Tooltip>
+        )}
+        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          <ApartmentOutlined /> Соединить узлы — потяните мышью от точки к точке.
+        </Typography.Text>
+      </Space>
+
+      {/* ─── Canvas ────────────────────────────────────────────── */}
+      <div
+        style={{
+          height,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 8,
+          background: token.colorFillQuaternary,
+        }}
+      >
+        <ReactFlow
+          nodes={rfNodes}
+          edges={rfEdges}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+          onNodeClick={(_, n) => setSelectedId(n.id)}
+          onPaneClick={() => setSelectedId(null)}
+          nodeTypes={SCENARIO_NODE_TYPES}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          proOptions={{ hideAttribution: true }}
+          colorMode={themeMode}
+          deleteKeyCode={null} /* handled manually so we can preserve start/end */
+        >
+          <Background />
+          <Controls />
+          <MiniMap
+            pannable
+            zoomable
+            maskColor={
+              themeMode === "dark"
+                ? "rgba(0, 0, 0, 0.6)"
+                : "rgba(240, 240, 240, 0.6)"
+            }
+            nodeColor={() => token.colorPrimary}
+            style={{
+              background: token.colorBgElevated,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          />
+        </ReactFlow>
+      </div>
+
+      {/* ─── Edit drawer ───────────────────────────────────────── */}
+      <Drawer
+        open={selected !== null}
+        onClose={() => setSelectedId(null)}
+        width={420}
+        title={selected ? `Узел: ${selected.type}` : ""}
+        destroyOnHidden
+      >
+        {selected && (
+          <NodeEditor
+            node={selected}
+            variables={variables}
+            onChange={handleSelectedDataChange}
+          />
+        )}
+      </Drawer>
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+
+function NodeEditor({
+  node,
+  variables,
+  onChange,
+}: {
+  node: GraphNode;
+  variables?: { key: string; value?: string }[];
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  if (node.type === "action") {
+    const d = node.data as ActionNodeData;
+    return (
+      <Form layout="vertical">
+        <Form.Item label="Действие">
+          <Select
+            value={d.action ?? "tap"}
+            onChange={(v) => onChange({ action: v })}
+            options={ACTION_VERBS}
+          />
+        </Form.Item>
+        <Form.Item label="Элемент">
+          <Input
+            value={d.element_label ?? ""}
+            onChange={(e) => onChange({ element_label: e.target.value })}
+            placeholder="Кнопка, поле, переключатель..."
+          />
+        </Form.Item>
+        <Form.Item label="Значение">
+          <Input
+            value={d.value ?? ""}
+            onChange={(e) => onChange({ value: e.target.value })}
+            placeholder="Текст или {{test_data.key}}"
+          />
+        </Form.Item>
+        <Form.Item
+          label="Ожидаемый результат"
+          extra="Опционально — будет сверяться с базой знаний."
+        >
+          <Input.TextArea
+            rows={2}
+            value={d.expected_result ?? ""}
+            onChange={(e) => onChange({ expected_result: e.target.value })}
+          />
+        </Form.Item>
+        <Form.Item
+          label="Описание экрана"
+          extra="Опишите экран словами на любом языке (PER-85). Если пусто — проверки нет."
+        >
+          <Input
+            value={d.screen_description ?? ""}
+            onChange={(e) => onChange({ screen_description: e.target.value })}
+            placeholder="например: экран входа"
+          />
+        </Form.Item>
+        {variables && variables.length > 0 && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            Доступные переменные: {variables.slice(0, 6).map((v) => `{{${v.key}}}`).join(", ")}
+            {variables.length > 6 ? ", …" : ""}
+          </Typography.Text>
+        )}
+      </Form>
+    );
+  }
+
+  if (node.type === "decision") {
+    const d = node.data as { label?: string };
+    return (
+      <Form layout="vertical">
+        <Form.Item
+          label="Подпись узла"
+          extra="Условия задаются на исходящих рёбрах (PER-83)."
+        >
+          <Input
+            value={d.label ?? ""}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder="Например: пользователь админ?"
+          />
+        </Form.Item>
+      </Form>
+    );
+  }
+
+  if (node.type === "wait") {
+    const d = node.data as { ms?: number };
+    return (
+      <Form layout="vertical">
+        <Form.Item label="Длительность (мс)">
+          <InputNumber
+            min={100}
+            max={60_000}
+            step={100}
+            value={d.ms ?? 1000}
+            onChange={(v) => onChange({ ms: v ?? 1000 })}
+            style={{ width: "100%" }}
+          />
+        </Form.Item>
+      </Form>
+    );
+  }
+
+  if (node.type === "screen_check") {
+    const d = node.data as { screen_description?: string };
+    return (
+      <Form layout="vertical">
+        <Form.Item
+          label="Описание экрана"
+          extra="LLM сверит текущий экран с этим описанием перед следующим шагом (PER-85)."
+        >
+          <Input.TextArea
+            rows={3}
+            value={d.screen_description ?? ""}
+            onChange={(e) => onChange({ screen_description: e.target.value })}
+            placeholder="например: главная страница со списком заказов"
+          />
+        </Form.Item>
+      </Form>
+    );
+  }
+
+  if (node.type === "loop_back") {
+    const d = node.data as { max_iterations?: number };
+    return (
+      <Form layout="vertical">
+        <Form.Item label="Максимум итераций">
+          <InputNumber
+            min={1}
+            max={1000}
+            value={d.max_iterations ?? 10}
+            onChange={(v) => onChange({ max_iterations: v ?? 10 })}
+            style={{ width: "100%" }}
+          />
+        </Form.Item>
+      </Form>
+    );
+  }
+
+  return (
+    <Typography.Text type="secondary">
+      Узел типа «{node.type}» — без редактируемых полей.
+    </Typography.Text>
+  );
+}
