@@ -11,8 +11,72 @@
     <link rel="icon" type="image/svg+xml" href="/markov.svg?v=2" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Марков</title>
+
+    <!-- Boot splash. The 5+ MB main bundle takes a beat to evaluate
+         on first visit, and AntD v5 injects most of its component
+         styles at runtime — so without this, the user sees a few
+         hundred ms of "DOM rendered but invisible" between React
+         mount and style injection. The splash is removed by main.tsx
+         once createRoot().render() returns. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0b0b;
+        color: #f5f5f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+      #ta-boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #0b0b0b;
+        color: #f5f5f5;
+        z-index: 9999;
+        transition: opacity 200ms ease-out;
+      }
+      #ta-boot-splash.fade {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #ta-boot-splash .logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 12px;
+        background: #ee3424;
+        color: #fff;
+        font-weight: 700;
+        font-size: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #ta-boot-splash .ring {
+        width: 28px;
+        height: 28px;
+        border: 3px solid rgba(255, 255, 255, 0.15);
+        border-top-color: #ee3424;
+        border-radius: 50%;
+        animation: ta-boot-spin 0.9s linear infinite;
+      }
+      @keyframes ta-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="ta-boot-splash">
+      <div class="logo">М</div>
+      <div class="ring"></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
