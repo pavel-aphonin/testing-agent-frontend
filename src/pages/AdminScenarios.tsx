@@ -48,6 +48,7 @@ import {
   type ScenarioGraphV2,
   type ActionNodeData,
 } from "@/components/scenario/graph/types";
+import { validateGraph } from "@/components/scenario/graph/validate";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
 
@@ -500,6 +501,14 @@ export function AdminScenarioEdit() {
   };
   const handleFormChange = () => setIsDirty(true);
 
+  // PER-84: surface validation status to the toolbar so we can disable
+  // Save while the graph has errors. Cheap: same memo the editor runs.
+  const graphIssues = useMemo(() => validateGraph(graph), [graph]);
+  const graphErrors = useMemo(
+    () => graphIssues.filter((i) => i.severity === "error"),
+    [graphIssues],
+  );
+
   // Derive a linear ``steps`` view of the graph for the Constructor /
   // JSON tabs. Returns null if the graph isn't a simple chain
   // start → action … → end (i.e. it has decisions, loops, or
@@ -736,14 +745,24 @@ export function AdminScenarioEdit() {
               { value: "json", label: "JSON" },
             ]}
           />
-          <Button
-            type="primary"
-            onClick={handleSave}
-            loading={updateMutation.isPending}
-            disabled={!isDirty}
+          <Tooltip
+            title={
+              graphErrors.length > 0
+                ? `Граф содержит ${graphErrors.length} ошибк${
+                    graphErrors.length === 1 ? "у" : "и"
+                  } — исправьте, чтобы сохранить`
+                : ""
+            }
           >
-            {t("common.save")}
-          </Button>
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={updateMutation.isPending}
+              disabled={!isDirty || graphErrors.length > 0}
+            >
+              {t("common.save")}
+            </Button>
+          </Tooltip>
         </Space>
       </Space>
 

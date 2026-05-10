@@ -40,6 +40,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
+  Alert,
   Button,
   Drawer,
   Form,
@@ -47,6 +48,7 @@ import {
   InputNumber,
   Select,
   Space,
+  Switch,
   Tooltip,
   Typography,
   theme,
@@ -65,6 +67,7 @@ import {
   type GraphNodeType,
   type ScenarioGraphV2,
 } from "./types";
+import { validateGraph, type ValidationIssue } from "./validate";
 
 // ──────────────────────────────────────────────────────────────────────
 
@@ -125,6 +128,49 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
       })),
     [value.nodes],
   );
+
+  // PER-84: synchronous validation pass. Memoised so we don't re-walk
+  // the graph on every pointer move.
+  const issues: ValidationIssue[] = useMemo(() => validateGraph(value), [value]);
+  const errors = issues.filter((i) => i.severity === "error");
+  const warnings = issues.filter((i) => i.severity === "warning");
+  const issuesByNode = useMemo(() => {
+    const m = new Map<string, ValidationIssue>();
+    for (const i of issues) {
+      if (i.target.startsWith("node:")) {
+        const id = i.target.slice("node:".length);
+        if (!m.has(id) || (i.severity === "error" && m.get(id)?.severity !== "error")) {
+          m.set(id, i);
+        }
+      }
+    }
+    return m;
+  }, [issues]);
+
+  // Inject a coloured outline on nodes that have validation issues so
+  // the user can see the offending vertices without reading the
+  // banner. Recomputed in a separate memo so the rfNodes memo above
+  // doesn't have to depend on issues (cleaner cache invalidation).
+  const decoratedRfNodes: Node[] = useMemo(() => {
+    if (issuesByNode.size === 0) return rfNodes;
+    return rfNodes.map((n) => {
+      const issue = issuesByNode.get(n.id);
+      if (!issue) return n;
+      const colour =
+        issue.severity === "error" ? token.colorError : token.colorWarning;
+      return {
+        ...n,
+        style: {
+          ...(n.style ?? {}),
+          outline: `2px solid ${colour}`,
+          outlineOffset: 2,
+          borderRadius: 8,
+        },
+      };
+    });
+    // ``token`` deps because outline colour reads tokens — kept so
+    // theme switches re-render highlights.
+  }, [rfNodes, issuesByNode, token]);
   const rfEdges: Edge[] = useMemo(
     () =>
       value.edges.map((e) => {
@@ -374,6 +420,41 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
         </Typography.Text>
       </Space>
 
+      {/* ─── Validation banner (PER-84) ────────────────────────── */}
+      {(errors.length > 0 || warnings.length > 0) && (
+        <Alert
+          type={errors.length > 0 ? "error" : "warning"}
+          showIcon
+          style={{ marginBottom: 8 }}
+          message={
+            errors.length > 0
+              ? `Граф невалиден: ${errors.length} ${errors.length === 1 ? "ошибка" : "ошибок"}`
+              : `Предупреждений: ${warnings.length}`
+          }
+          description={
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {issues.slice(0, 6).map((i, idx) => (
+                <li key={`${i.target}-${idx}`}>
+                  <Typography.Text
+                    type={i.severity === "error" ? "danger" : "warning"}
+                    style={{ fontSize: 12 }}
+                  >
+                    {i.message}
+                  </Typography.Text>
+                </li>
+              ))}
+              {issues.length > 6 && (
+                <li>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    …и ещё {issues.length - 6}.
+                  </Typography.Text>
+                </li>
+              )}
+            </ul>
+          }
+        />
+      )}
+
       {/* ─── Canvas ────────────────────────────────────────────── */}
       <div
         style={{
@@ -384,7 +465,7 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
         }}
       >
         <ReactFlow
-          nodes={rfNodes}
+          nodes={decoratedRfNodes}
           edges={rfEdges}
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
@@ -662,6 +743,28 @@ function EdgeEditor({
           onChange={(e) => onChange({ label: e.target.value })}
           placeholder="например: admin"
         />
+      </Form.Item>
+      <Form.Item
+        label="Это back-edge (цикл)"
+        extra="Включите для рёбер, возвращающих поток назад по графу. Worker считает повторы и останавливается при достижении max_iterations."
+      >
+        <Space>
+          <Switch
+            checked={Boolean(data.loop)}
+            onChange={(checked) => onChange({ loop: checked })}
+          />
+          {Boolean(data.loop) && (
+            <InputNumber
+              min={1}
+              max={1000}
+              placeholder="max"
+              value={(data.max_iterations as number | undefined) ?? undefined}
+              onChange={(v) => onChange({ max_iterations: v ?? undefined })}
+              addonAfter="итераций"
+              style={{ width: 180 }}
+            />
+          )}
+        </Space>
       </Form.Item>
       <Form.Item>
         <Button danger size="small" onClick={onDelete}>
