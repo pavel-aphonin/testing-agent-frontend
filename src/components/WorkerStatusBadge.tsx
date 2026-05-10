@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Badge, Tooltip } from "antd";
+import { Badge, Tooltip, Typography } from "antd";
 
 import { getWorkerStatus } from "@/api/worker";
 
@@ -41,13 +41,16 @@ export function WorkerStatusBadge() {
 
   return (
     <Tooltip title={hint} placement="bottom">
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#999" }}>
+      <Typography.Text
+        type="secondary"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}
+      >
         <Badge
           color={color}
           status={state === "connected" ? "processing" : "default"}
         />
         {label}
-      </span>
+      </Typography.Text>
     </Tooltip>
   );
 }

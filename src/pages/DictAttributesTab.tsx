@@ -24,6 +24,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from "antd";
 import dayjs from "dayjs";
 
@@ -63,6 +64,7 @@ export function DictAttributesTab() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const myPerms = useMemo(() => new Set(me?.permissions ?? []), [me?.permissions]);
+  const { token } = theme.useToken();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<AttributeRead | null>(null);
@@ -232,7 +234,7 @@ export function DictAttributesTab() {
           {rec.is_group ? (
             <FolderOutlined style={{ color: "#EE3424" }} />
           ) : (
-            <TagOutlined style={{ color: "#888" }} />
+            <TagOutlined style={{ color: token.colorTextSecondary }} />
           )}
           <strong>{name}</strong>
           {rec.is_required && !rec.is_group && (

@@ -20,6 +20,7 @@ import {
   Space,
   Spin,
   Typography,
+  theme,
 } from "antd";
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -59,6 +60,7 @@ function HelpLanding() {
   const nav = useNavigate();
   const [q, setQ] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { token } = theme.useToken();
 
   const sectionsQ = useQuery({
     queryKey: ["help-sections"],
@@ -170,7 +172,7 @@ function HelpLanding() {
           <div className="help-search">
             <Input
               size="large"
-              prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+              prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder="Поиск по названию или содержанию статьи…"
               value={q}
               onChange={(e) => setQ(e.target.value)}

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { theme } from "antd";
 import { Network, type Edge, type Node } from "vis-network";
 import { DataSet } from "vis-network/standalone";
 import "vis-network/styles/vis-network.css";
@@ -27,6 +28,7 @@ export function GraphVisNetwork({
   onNodeClick, onNodeContextMenu, overlayByHash,
 }: Props) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
 
@@ -47,10 +49,10 @@ export function GraphVisNetwork({
           // the box layout.
           label: overlay?.badgeText ? `${baseLabel}\n[${overlay.badgeText}]` : baseLabel,
           shape: "box",
-          font: { size: 12, multi: false },
+          font: { size: 12, multi: false, color: token.colorText },
           color: {
-            background: overlay?.bgColor ?? "#fff",
-            border: overlay?.borderColor ?? "#d9d9d9",
+            background: overlay?.bgColor ?? token.colorBgContainer,
+            border: overlay?.borderColor ?? token.colorBorder,
           },
           borderWidth: overlay?.borderColor ? 2 : 1,
           margin: { top: 8, right: 12, bottom: 8, left: 12 },
@@ -72,8 +74,8 @@ export function GraphVisNetwork({
         from: a,
         to: b,
         label: e.action_type,
-        font: { size: 10, color: "#555", strokeWidth: 0 },
-        color: { color: e.success ? "#1677ff" : "#cf1322" },
+        font: { size: 10, color: token.colorTextSecondary, strokeWidth: 0 },
+        color: { color: e.success ? token.colorPrimary : token.colorError },
         width: e.success ? 1.5 : 2,
         arrows: { to: { enabled: true, scaleFactor: 0.6 } },
         smooth: { enabled: true, type: "cubicBezier", roundness: 0.4 },
@@ -139,7 +141,7 @@ export function GraphVisNetwork({
       network.destroy();
       networkRef.current = null;
     };
-  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash, t]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash, t, token]);
 
   if (screens.length === 0) {
     return (
@@ -149,7 +151,7 @@ export function GraphVisNetwork({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#999",
+          color: token.colorTextTertiary,
           fontSize: 13,
         }}
       >
@@ -163,8 +165,8 @@ export function GraphVisNetwork({
       ref={containerRef}
       style={{
         height,
-        background: "#fafafa",
-        border: "1px solid #f0f0f0",
+        background: token.colorFillQuaternary,
+        border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 4,
       }}
     />

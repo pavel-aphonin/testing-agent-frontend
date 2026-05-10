@@ -1,4 +1,4 @@
-import { Menu } from "antd";
+import { Menu, theme } from "antd";
 import type { CSSProperties } from "react";
 
 /**
@@ -26,6 +26,7 @@ interface Props {
 }
 
 export function NodeContextMenu({ anchor, screenHash, items, onClose }: Props) {
+  const { token } = theme.useToken();
   // Pinned to the viewport so it doesn't follow scroll — same as
   // native context menus. Z-index above antd Drawer (1000 default)
   // so right-click still works when a drawer is open.
@@ -34,9 +35,9 @@ export function NodeContextMenu({ anchor, screenHash, items, onClose }: Props) {
     top: anchor.y,
     left: anchor.x,
     zIndex: 1100,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    boxShadow: token.boxShadowSecondary,
     borderRadius: 6,
-    background: "#fff",
+    background: token.colorBgElevated,
   };
 
   // Empty items list = render nothing (renderer can pass [] when the

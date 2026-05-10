@@ -60,7 +60,7 @@ export class ErrorBoundary extends React.Component<
             </Button>,
           ]}
         >
-          <details style={{ marginTop: 16, color: "#999" }}>
+          <details style={{ marginTop: 16, opacity: 0.65 }}>
             <summary style={{ cursor: "pointer" }}>Подробности ошибки</summary>
             <Typography.Paragraph
               code

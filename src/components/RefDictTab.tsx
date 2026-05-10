@@ -13,6 +13,7 @@ import {
   Tabs,
   Tag,
   Tooltip,
+  theme,
 } from "antd";
 import { useMemo, useState } from "react";
 
@@ -59,6 +60,7 @@ const EMOJI_GROUPS: Record<string, string[]> = {
 
 function EmojiPicker({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
   const [open, setOpen] = useState(false);
+  const { token } = theme.useToken();
   const pick = (e: string) => { onChange?.(e); setOpen(false); };
   const items = Object.entries(EMOJI_GROUPS).map(([title, list]) => ({
     key: title,
@@ -107,7 +109,7 @@ function EmojiPicker({ value, onChange }: { value?: string; onChange?: (v: strin
         placeholder="Нажмите, чтобы выбрать"
         suffix={
           <Tooltip title="Выбрать из списка">
-            <SmileOutlined style={{ color: "#8c8c8c", cursor: "pointer" }} />
+            <SmileOutlined style={{ color: token.colorTextSecondary, cursor: "pointer" }} />
           </Tooltip>
         }
         readOnly

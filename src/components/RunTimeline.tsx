@@ -1,4 +1,4 @@
-import { Card, Empty, Image, Space, Tag, Tooltip, Typography } from "antd";
+import { Card, Empty, Image, Space, Tag, Tooltip, Typography, theme } from "antd";
 
 import type { RunEdgeSummary } from "@/types";
 
@@ -72,9 +72,9 @@ function TimelineStep({ runId, edge }: { runId: string; edge: RunEdgeSummary }) 
         <div style={{ flex: 1, minWidth: 220 }}>
           <Typography.Text strong>{description}</Typography.Text>
           {value && (
-            <div style={{ fontSize: 12, color: "#8c8c8c" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
               значение: <Typography.Text code>{value}</Typography.Text>
-            </div>
+            </Typography.Text>
           )}
           {edge.llm_reasoning && (
             <Typography.Paragraph
@@ -95,9 +95,12 @@ function TimelineStep({ runId, edge }: { runId: string; edge: RunEdgeSummary }) 
 function ScreenshotCell({
   src, alt, label,
 }: { src: string | null; alt: string; label: string }) {
+  const { token } = theme.useToken();
   return (
     <div style={{ width: 120, textAlign: "center" }}>
-      <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 2 }}>{label}</div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, marginBottom: 2, display: "block" }}>
+        {label}
+      </Typography.Text>
       {src ? (
         <Image
           src={src}
@@ -113,8 +116,8 @@ function ScreenshotCell({
           style={{
             width: 120, height: 200,
             display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px dashed #d9d9d9", borderRadius: 4,
-            color: "#bfbfbf", fontSize: 11,
+            border: `1px dashed ${token.colorBorder}`, borderRadius: 4,
+            color: token.colorTextTertiary, fontSize: 11,
           }}
         >
           нет

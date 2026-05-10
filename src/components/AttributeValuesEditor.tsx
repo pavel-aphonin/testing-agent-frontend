@@ -199,9 +199,9 @@ function AttributeNode({
       <div style={{ minWidth: 200 }}>
         <Typography.Text>{attr.name}</Typography.Text>
         {attr.is_required && <Tag color="red" style={{ marginLeft: 6 }}>*</Tag>}
-        <div style={{ fontSize: 11, color: "#999" }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11, display: "block" }}>
           {attr.description || <em>{attr.code}</em>}
-        </div>
+        </Typography.Text>
       </div>
       <div style={{ flex: 1 }}>
         <ValueInput

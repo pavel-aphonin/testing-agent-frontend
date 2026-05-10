@@ -18,6 +18,7 @@ import {
   Switch,
   Tag,
   Typography,
+  theme,
 } from "antd";
 
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
@@ -45,6 +46,7 @@ export function AdminDevices() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AddDeviceForm>();
+  const { token } = theme.useToken();
 
   const devicesQuery = useQuery({
     queryKey: ["admin-devices"],
@@ -306,7 +308,7 @@ export function AdminDevices() {
               locale={{
                 emptyText: (
                   <Space direction="vertical" align="center" style={{ padding: 24 }}>
-                    <MobileOutlined style={{ fontSize: 32, color: "#ccc" }} />
+                    <MobileOutlined style={{ fontSize: 32, color: token.colorTextQuaternary }} />
                     <Typography.Text type="secondary">
                       {t("adminDevices.noDevices")}
                     </Typography.Text>

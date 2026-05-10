@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Image } from "antd";
+import { Image, theme } from "antd";
 
 import { apiClient } from "@/api/client";
 import type { NodeOverlayStyle } from "@/types";
@@ -25,6 +25,7 @@ const screenshotCache = new Map<string, string>();
 export function ScreenNode({ data }: NodeProps) {
   const { label, visitCount, screenIdHash, hasScreenshot, runId, overlay } =
     data as unknown as ScreenNodeData;
+  const { token } = theme.useToken();
 
   const [src, setSrc] = useState<string | null>(
     screenshotCache.get(screenIdHash) ?? null,
@@ -69,8 +70,8 @@ export function ScreenNode({ data }: NodeProps) {
         position: "relative",
         width: 200,
         height: 260,
-        background: overlay?.bgColor ?? "#fff",
-        border: `${overlay?.borderColor ? 2 : 1}px solid ${overlay?.borderColor ?? "#d9d9d9"}`,
+        background: overlay?.bgColor ?? token.colorBgContainer,
+        border: `${overlay?.borderColor ? 2 : 1}px solid ${overlay?.borderColor ?? token.colorBorder}`,
         borderRadius: 8,
         display: "flex",
         flexDirection: "column",
@@ -117,7 +118,7 @@ export function ScreenNode({ data }: NodeProps) {
           height: 200,
           borderRadius: 6,
           overflow: "hidden",
-          background: "#f5f5f5",
+          background: token.colorFillQuaternary,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -125,7 +126,7 @@ export function ScreenNode({ data }: NodeProps) {
         }}
       >
         {loading ? (
-          <span style={{ color: "#bbb", fontSize: 11 }}>...</span>
+          <span style={{ color: token.colorTextQuaternary, fontSize: 11 }}>...</span>
         ) : src ? (
           <Image
             src={src}
@@ -136,7 +137,7 @@ export function ScreenNode({ data }: NodeProps) {
             preview={{ mask: null }}
           />
         ) : (
-          <span style={{ color: "#bbb", fontSize: 11 }}>No screenshot</span>
+          <span style={{ color: token.colorTextQuaternary, fontSize: 11 }}>No screenshot</span>
         )}
       </div>
 
@@ -163,7 +164,7 @@ export function ScreenNode({ data }: NodeProps) {
         <div
           style={{
             fontSize: 10,
-            color: "#888",
+            color: token.colorTextSecondary,
             marginTop: 1,
           }}
         >

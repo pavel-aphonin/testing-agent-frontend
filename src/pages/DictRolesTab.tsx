@@ -22,6 +22,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
@@ -50,6 +51,7 @@ export function DictRolesTab() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const myPerms = useMemo(() => new Set(me?.permissions ?? []), [me?.permissions]);
+  const { token } = theme.useToken();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRead | null>(null);
@@ -176,7 +178,7 @@ export function DictRolesTab() {
           {rec.is_group ? (
             <FolderOutlined style={{ color: "#EE3424" }} />
           ) : (
-            <TagOutlined style={{ color: "#888" }} />
+            <TagOutlined style={{ color: token.colorTextSecondary }} />
           )}
           <strong>{name}</strong>
           {rec.is_system && <Tag color="orange">Системная</Tag>}

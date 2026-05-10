@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Radio, Select, Space, Tooltip } from "antd";
+import { Alert, Radio, Select, Space, Tooltip, Typography } from "antd";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -211,9 +211,9 @@ export function StateGraph({
           because every overlay needs run-scoped data. */}
       {runId && (
         <Space wrap style={{ paddingLeft: 8 }}>
-          <span style={{ fontSize: 12, color: "#666" }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {t("graph.overlay.label")}:
-          </span>
+          </Typography.Text>
           <Radio.Group
             size="small"
             value={overlay}

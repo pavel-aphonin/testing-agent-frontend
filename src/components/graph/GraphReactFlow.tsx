@@ -9,6 +9,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { theme } from "antd";
 import dagre from "dagre";
 
 import type {
@@ -70,6 +71,7 @@ export function GraphReactFlow({
   onNodeClick, onNodeContextMenu, overlayByHash,
 }: Props) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   // PER-42 bugfix: react-flow's onNode* events surface ``node.id``
   // (synthetic "s0", "s1" labels we use for layout), not the screen
   // hash. Build a reverse map and translate before bubbling up.
@@ -119,16 +121,16 @@ export function GraphReactFlow({
         label: e.action_type,
         animated: false,
         style: {
-          stroke: e.success ? "#1677ff" : "#cf1322",
+          stroke: e.success ? token.colorPrimary : token.colorError,
           strokeWidth: e.success ? 1.5 : 2,
         },
-        labelStyle: { fontSize: 10 },
-        labelBgStyle: { fill: "#fff" },
+        labelStyle: { fontSize: 10, fill: token.colorText },
+        labelBgStyle: { fill: token.colorBgContainer },
       });
     });
 
     return layout(baseNodes, baseEdges);
-  }, [screens, edges, runId, overlayByHash]);
+  }, [screens, edges, runId, overlayByHash, token]);
 
   if (screens.length === 0) {
     return (
@@ -138,7 +140,7 @@ export function GraphReactFlow({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#999",
+          color: token.colorTextTertiary,
           fontSize: 13,
         }}
       >
@@ -148,7 +150,7 @@ export function GraphReactFlow({
   }
 
   return (
-    <div style={{ height, border: "1px solid #f0f0f0", borderRadius: 4 }}>
+    <div style={{ height, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 4 }}>
       <ReactFlow
         nodes={nodes}
         edges={rfEdges}

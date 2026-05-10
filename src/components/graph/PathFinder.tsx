@@ -1,6 +1,6 @@
 import { ArrowRightOutlined, NodeIndexOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { useMutation } from "@tanstack/react-query";
-import { Alert, Button, Card, Checkbox, Empty, Modal, Select, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Checkbox, Empty, Modal, Select, Space, Tag, Typography, theme } from "antd";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -33,6 +33,7 @@ export function PathFinder({ screens, edges, runId }: Props) {
   const [replayModalOpen, setReplayModalOpen] = useState(false);
   const [continueAfter, setContinueAfter] = useState(false);
   const nav = useNavigate();
+  const { token } = theme.useToken();
 
   const replayM = useMutation({
     mutationFn: ({ edgeIds, continueAfterReplay }: { edgeIds: number[]; continueAfterReplay: boolean }) =>
@@ -95,7 +96,7 @@ export function PathFinder({ screens, edges, runId }: Props) {
           optionFilterProp="label"
           allowClear
         />
-        <ArrowRightOutlined style={{ color: "#999" }} />
+        <ArrowRightOutlined style={{ color: token.colorTextTertiary }} />
         <Select
           showSearch
           placeholder="Куда"

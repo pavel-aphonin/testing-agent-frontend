@@ -12,6 +12,7 @@ import {
   Space,
   Tag,
   Typography,
+  theme,
 } from "antd";
 import { useState } from "react";
 
@@ -117,7 +118,7 @@ export function FeedbackInbox() {
                     {t.body}
                   </Typography.Paragraph>
                 </div>
-                <div style={{ textAlign: "right", fontSize: 12, color: "#8c8c8c" }}>
+                <Typography.Text type="secondary" style={{ textAlign: "right", fontSize: 12, display: "block" }}>
                   <div>{t.user_email ?? "аноним"}</div>
                   <div>
                     {new Date(t.created_at).toLocaleDateString("ru-RU")}{" "}
@@ -126,7 +127,7 @@ export function FeedbackInbox() {
                       minute: "2-digit",
                     })}
                   </div>
-                </div>
+                </Typography.Text>
               </Space>
             </Card>
           ))}
@@ -154,6 +155,7 @@ function FeedbackDetails({
   onUpdated: () => void;
 }) {
   const [form] = Form.useForm();
+  const { token } = theme.useToken();
   const m = useMutation({
     mutationFn: (patch: {
       status?: FeedbackStatus;
@@ -206,11 +208,11 @@ function FeedbackDetails({
 
           {ticket.context && Object.keys(ticket.context).length > 0 && (
             <details style={{ marginBottom: 20 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12, color: "#595959" }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.65 }}>
                 Технический контекст
               </summary>
               <pre style={{
-                fontSize: 11, background: "#fafafa", padding: 10,
+                fontSize: 11, background: token.colorFillQuaternary, padding: 10,
                 borderRadius: 6, marginTop: 6,
               }}>
                 {JSON.stringify(ticket.context, null, 2)}

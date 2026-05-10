@@ -61,7 +61,8 @@ export function AppSlots({ slot, fixed = false, contextData }: Props) {
         shape={slot === "corner" ? "round" : "default"}
         icon={IconComp ? <IconComp /> : null}
         onClick={() => setActive({ inst, path: s.path || "frontend/index.html" })}
-        style={slot === "top_bar" ? { color: "#999" } : undefined}
+        // PER-67: theme-aware colour for the top-bar plug-in button label
+        style={slot === "top_bar" ? { opacity: 0.7 } : undefined}
       >
         {s.label}
       </Button>

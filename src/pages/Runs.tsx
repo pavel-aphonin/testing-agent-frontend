@@ -89,9 +89,9 @@ export function Runs() {
           minute: "2-digit",
         });
         return (
-          <span style={{ color: "#999" }}>
+          <Typography.Text type="secondary">
             Запуск от {day}.{month} {time}
-          </span>
+          </Typography.Text>
         );
       },
     },

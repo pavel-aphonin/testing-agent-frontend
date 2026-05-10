@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { theme } from "antd";
 import cytoscape, { type Core } from "cytoscape";
 // @ts-expect-error — cytoscape-dagre ships its own types but they don't
 // re-export the default for use as a Cytoscape extension.
@@ -30,6 +31,7 @@ export function GraphCytoscape({
   onNodeClick, onNodeContextMenu, overlayByHash,
 }: Props) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
 
@@ -52,8 +54,8 @@ export function GraphCytoscape({
             : (s.name || s.screen_id_hash.slice(0, 10)),
           visits: s.visit_count,
           // Inline-style fields read by per-element selectors below.
-          bg: overlay?.bgColor ?? "#fff",
-          border: overlay?.borderColor ?? "#d9d9d9",
+          bg: overlay?.bgColor ?? token.colorBgContainer,
+          border: overlay?.borderColor ?? token.colorBorder,
           borderWidth: overlay?.borderColor ? 2 : 1,
         },
       };
@@ -95,7 +97,7 @@ export function GraphCytoscape({
             "text-valign": "center",
             "text-halign": "center",
             "font-size": 11,
-            color: "#333",
+            color: token.colorText,
             shape: "round-rectangle",
             width: 140,
             height: 50,
@@ -108,23 +110,23 @@ export function GraphCytoscape({
           selector: "edge",
           style: {
             width: 1.5,
-            "line-color": "#1677ff",
-            "target-arrow-color": "#1677ff",
+            "line-color": token.colorPrimary,
+            "target-arrow-color": token.colorPrimary,
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             label: "data(label)",
             "font-size": 9,
-            "text-background-color": "#fff",
+            "text-background-color": token.colorBgContainer,
             "text-background-opacity": 1,
             "text-background-padding": "2px",
-            color: "#555",
+            color: token.colorTextSecondary,
           },
         },
         {
           selector: "edge[success = 0]",
           style: {
-            "line-color": "#cf1322",
-            "target-arrow-color": "#cf1322",
+            "line-color": token.colorError,
+            "target-arrow-color": token.colorError,
             width: 2,
           },
         },
@@ -168,7 +170,7 @@ export function GraphCytoscape({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash]);
+  }, [screens, edges, onNodeClick, onNodeContextMenu, overlayByHash, token]);
 
   if (screens.length === 0) {
     return (
@@ -178,7 +180,7 @@ export function GraphCytoscape({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#999",
+          color: token.colorTextTertiary,
           fontSize: 13,
         }}
       >
@@ -192,8 +194,8 @@ export function GraphCytoscape({
       ref={containerRef}
       style={{
         height,
-        background: "#fafafa",
-        border: "1px solid #f0f0f0",
+        background: token.colorFillQuaternary,
+        border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 4,
       }}
     />

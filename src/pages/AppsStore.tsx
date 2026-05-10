@@ -142,9 +142,9 @@ export function AppsStore() {
               <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {p.name}
               </div>
-              <div style={{ fontSize: 11, color: "#8c8c8c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <Typography.Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
                 {p.description || "—"}
-              </div>
+              </Typography.Text>
             </div>
           </div>
         ),
@@ -305,7 +305,7 @@ export function AppsStore() {
         >
           <Input
             size="large"
-            prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+            prefix={<SearchOutlined style={{ color: t.colorTextTertiary }} />}
             placeholder="Найти приложение по названию или описанию…"
             value={q}
             onChange={(e) => setQ(e.target.value)}

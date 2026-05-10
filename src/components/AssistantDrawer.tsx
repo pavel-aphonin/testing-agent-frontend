@@ -193,6 +193,7 @@ export function AssistantDrawer({ open, onClose }: Props) {
 
 function Message({ message }: { message: AssistantMessage }) {
   const isUser = message.role === "user";
+  const { token } = theme.useToken();
   return (
     <div
       style={{
@@ -205,14 +206,16 @@ function Message({ message }: { message: AssistantMessage }) {
     >
       <Avatar
         size="small"
-        style={{ background: isUser ? "#1677ff" : "#EE3424", flexShrink: 0 }}
+        style={{ background: isUser ? token.colorPrimary : "#EE3424", flexShrink: 0 }}
       >
         {isUser ? "Я" : "М"}
       </Avatar>
       <div
         style={{
-          background: isUser ? "#e6f4ff" : "#fff",
-          border: isUser ? "1px solid #91caff" : "1px solid #f0f0f0",
+          background: isUser ? token.colorPrimaryBg : token.colorBgContainer,
+          border: isUser
+            ? `1px solid ${token.colorPrimaryBorder}`
+            : `1px solid ${token.colorBorderSecondary}`,
           borderRadius: 8,
           padding: "8px 12px",
           maxWidth: "85%",

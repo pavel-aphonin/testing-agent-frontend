@@ -33,6 +33,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -55,6 +56,7 @@ import type {
 import { notify } from "@/utils/notify";
 
 export function WorkspaceApps() {
+  const { token } = theme.useToken();
   const ws = useWorkspaceStore((s) => s.current);
   const qc = useQueryClient();
   const [settingsFor, setSettingsFor] = useState<AppInstallationRead | null>(null);
@@ -193,7 +195,7 @@ export function WorkspaceApps() {
                           : undefined
                       }
                       icon={<AppstoreOutlined />}
-                      style={{ background: "#fafafa" }}
+                      style={{ background: token.colorFillQuaternary }}
                     />
                     <span>{inst.package?.name ?? "?"}</span>
                     {!inst.is_enabled && <Tag color="default">Выключено</Tag>}
@@ -240,12 +242,12 @@ export function WorkspaceApps() {
                 }
               >
                 <Typography.Paragraph
-                  style={{ fontSize: 12, color: "#666", marginBottom: 4 }}
+                  style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}
                   ellipsis={{ rows: 2 }}
                 >
                   {inst.package?.description || "Описание отсутствует"}
                 </Typography.Paragraph>
-                <div style={{ fontSize: 11, color: "#999" }}>
+                <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
                   v{inst.version?.version ?? "?"} · установлено{" "}
                   {new Date(inst.installed_at).toLocaleDateString("ru-RU")}
                 </div>
@@ -279,11 +281,11 @@ export function WorkspaceApps() {
                               : undefined
                           }
                           icon={<AppstoreOutlined />}
-                          style={{ background: "#fafafa" }}
+                          style={{ background: token.colorFillQuaternary }}
                         />
                         <div>
                           <Typography.Text strong>{inst.package?.name}</Typography.Text>
-                          <div style={{ fontSize: 12, color: "#999" }}>
+                          <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
                             v{inst.version?.version} →{" "}
                             <Tag color="green">v{latestVersion}</Tag>
                           </div>
@@ -425,8 +427,9 @@ function GroupedSettings({ fields }: { fields: AppManifestSetting[] }) {
             key: title,
             label: (
               <Typography.Text
+                type="secondary"
                 strong
-                style={{ fontSize: 12, letterSpacing: 0.3, textTransform: "uppercase", color: "#555" }}
+                style={{ fontSize: 12, letterSpacing: 0.3, textTransform: "uppercase" }}
               >
                 {title}
               </Typography.Text>
@@ -457,7 +460,8 @@ function SettingField({ field }: { field: AppManifestSetting }) {
       {field.required && <span style={{ color: "#cf1322" }}>*</span>}
       {field.description && (
         <Tooltip title={field.description}>
-          <QuestionCircleOutlined style={{ color: "#bfbfbf", cursor: "help" }} />
+          {/* PER-67: AntD's default outline icon already adapts to theme */}
+          <QuestionCircleOutlined style={{ opacity: 0.6, cursor: "help" }} />
         </Tooltip>
       )}
     </Space>

@@ -21,6 +21,7 @@ import {
   Table,
   Tag,
   Typography,
+  theme,
 } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -578,6 +579,7 @@ const TEST_PAYLOAD = {
 function PackagePreview({ form }: { form: any }) {
   const html: string = Form.useWatch("html_source", form) ?? "";
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const { token } = theme.useToken();
   // Debounce text edits so we don't tear down the iframe on every key.
   // 500 ms feels right — short enough to look "live", long enough that
   // even a fast typist gets at most a couple of remounts per word.
@@ -650,7 +652,7 @@ function PackagePreview({ form }: { form: any }) {
           style={{
             width: "100%",
             height: 320,
-            border: "1px solid #d9d9d9",
+            border: `1px solid ${token.colorBorder}`,
             borderRadius: 6,
             background: "transparent",
           }}
@@ -662,9 +664,9 @@ function PackagePreview({ form }: { form: any }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            border: "1px dashed #d9d9d9",
+            border: `1px dashed ${token.colorBorder}`,
             borderRadius: 6,
-            color: "#8c8c8c",
+            color: token.colorTextSecondary,
             fontSize: 13,
           }}
         >

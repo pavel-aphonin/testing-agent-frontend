@@ -20,6 +20,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from "antd";
 
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
@@ -83,6 +84,7 @@ function highlightCitations(text: string, citations: string[]): string {
 }
 
 export function AdminKnowledge() {
+  const { token } = theme.useToken();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -408,10 +410,10 @@ export function AdminKnowledge() {
             cursor: "pointer",
             transition: "border-color 0.2s",
             marginBottom: 8,
-            background: "#fafafa",
+            background: token.colorFillQuaternary,
           }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#EE3424"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#d9d9d9"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = token.colorBorder; }}
         >
           {uploading ? (
             <div>
@@ -429,7 +431,7 @@ export function AdminKnowledge() {
             </div>
           ) : (
             <div>
-              <InboxOutlined style={{ fontSize: 32, color: "#999", marginBottom: 8 }} />
+              <InboxOutlined style={{ fontSize: 32, color: token.colorTextTertiary, marginBottom: 8 }} />
               <br />
               <Typography.Text strong>Выберите файл</Typography.Text>
               <br />
@@ -462,7 +464,7 @@ export function AdminKnowledge() {
               <span>
                 {t("knowledge.documentTitle")}&nbsp;
                 <Tooltip title={t("knowledge.titleTooltip")}>
-                  <QuestionCircleOutlined style={{ color: "#999" }} />
+                  <QuestionCircleOutlined style={{ color: token.colorTextTertiary }} />
                 </Tooltip>
               </span>
             }
@@ -476,7 +478,7 @@ export function AdminKnowledge() {
               <span>
                 {t("knowledge.content")}&nbsp;
                 <Tooltip title={t("knowledge.contentHelp")}>
-                  <QuestionCircleOutlined style={{ color: "#999" }} />
+                  <QuestionCircleOutlined style={{ color: token.colorTextTertiary }} />
                 </Tooltip>
               </span>
             }
@@ -529,8 +531,8 @@ export function AdminKnowledge() {
             {/* LLM answer */}
             {searchResults.answer ? (
               <div style={{
-                background: "#f6ffed",
-                border: "1px solid #b7eb8f",
+                background: token.colorSuccessBg,
+                border: `1px solid ${token.colorSuccessBorder}`,
                 borderRadius: 8,
                 padding: "16px 20px",
                 marginBottom: 12,
@@ -548,7 +550,7 @@ export function AdminKnowledge() {
             {/* Source chunks — collapsed by default, with highlighted query terms */}
             {searchResults.matches.length > 0 && (
               <details style={{ marginTop: 8 }}>
-                <summary style={{ cursor: "pointer", color: "#999", fontSize: 13, userSelect: "none" }}>
+                <summary style={{ cursor: "pointer", color: token.colorTextTertiary, fontSize: 13, userSelect: "none" }}>
                   Источники ({searchResults.matches.length})
                 </summary>
                 <div style={{ marginTop: 8 }}>
@@ -557,7 +559,7 @@ export function AdminKnowledge() {
                       <summary style={{
                         cursor: "pointer",
                         fontSize: 12,
-                        color: "#666",
+                        color: token.colorTextSecondary,
                         padding: "4px 0",
                         userSelect: "none",
                       }}>
@@ -566,9 +568,9 @@ export function AdminKnowledge() {
                       <div
                         style={{
                           padding: "8px 12px",
-                          background: "#fafafa",
+                          background: token.colorFillQuaternary,
                           borderRadius: 6,
-                          border: "1px solid #f0f0f0",
+                          border: `1px solid ${token.colorBorderSecondary}`,
                           fontSize: 12,
                           lineHeight: 1.6,
                           marginTop: 4,

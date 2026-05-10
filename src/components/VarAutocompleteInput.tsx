@@ -1,4 +1,4 @@
-import { AutoComplete, Input } from "antd";
+import { AutoComplete, Input, Typography } from "antd";
 import { useMemo, useState } from "react";
 
 interface Props {
@@ -51,9 +51,9 @@ export function VarAutocompleteInput({
           <span>
             <code>{partial.prefix}{v.key}{"}"}</code>
             {v.value && (
-              <span style={{ color: "#999", marginLeft: 8, fontSize: 11 }}>
+              <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 11 }}>
                 = {v.value.length > 24 ? v.value.slice(0, 24) + "…" : v.value}
-              </span>
+              </Typography.Text>
             )}
           </span>
         ),

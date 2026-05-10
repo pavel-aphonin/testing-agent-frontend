@@ -641,7 +641,7 @@ export function AdminScenarios() {
       width: 130,
       render: (_, record) => {
         const ids = record.rag_document_ids ?? [];
-        return ids.length > 0 ? <Tag color="purple">{ids.length}</Tag> : <span style={{ color: "#999" }}>—</span>;
+        return ids.length > 0 ? <Tag color="purple">{ids.length}</Tag> : <Typography.Text type="secondary">—</Typography.Text>;
       },
     },
     {

@@ -475,9 +475,9 @@ function AddWidgetButton({
         label: (
           <span>
             {t.icon ?? "⭐"} {t.name}
-            <span style={{ color: "#8c8c8c", fontSize: 11, marginLeft: 8 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
               {t.widget_type}
-            </span>
+            </Typography.Text>
           </span>
         ),
         onClick: () => onAddFromTemplate(t.id),

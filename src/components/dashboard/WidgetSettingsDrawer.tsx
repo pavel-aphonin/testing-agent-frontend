@@ -279,9 +279,9 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
           label: (
             <div>
               <div>{i.name}</div>
-              <div style={{ fontSize: 11, color: "#8c8c8c" }}>
+              <Typography.Text type="secondary" style={{ fontSize: 11, display: "block" }}>
                 {i.kind} · {i.code}
-              </div>
+              </Typography.Text>
             </div>
           ),
         }));
@@ -295,9 +295,9 @@ export function WidgetSettingsDrawer({ dashId, widget, onClose }: Props) {
         label: (
           <div>
             <div>{i.name}</div>
-            <div style={{ fontSize: 11, color: "#8c8c8c" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: "block" }}>
               {i.kind} · {i.code}
-            </div>
+            </Typography.Text>
           </div>
         ),
       }));

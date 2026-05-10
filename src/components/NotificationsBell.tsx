@@ -1,6 +1,6 @@
 import { BellOutlined, CheckOutlined, MailOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, Button, Dropdown, Empty, List, Space, Tag, Typography } from "antd";
+import { Badge, Button, Dropdown, Empty, List, Space, Tag, Typography, theme } from "antd";
 
 import {
   acceptInvitation,
@@ -18,6 +18,7 @@ import { notify } from "@/utils/notify";
 export function NotificationsBell() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
+  const { token: themeToken } = theme.useToken();
 
   const countQ = useQuery({
     queryKey: ["notif-unread-count"],
@@ -76,8 +77,8 @@ export function NotificationsBell() {
   const dropdownContent = (
     <div
       style={{
-        background: "#fff",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+        background: themeToken.colorBgElevated,
+        boxShadow: themeToken.boxShadowSecondary,
         borderRadius: 8,
         width: 380,
         maxHeight: 480,
@@ -87,7 +88,7 @@ export function NotificationsBell() {
       <div
         style={{
           padding: "10px 16px",
-          borderBottom: "1px solid #f0f0f0",
+          borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -137,7 +138,7 @@ export function NotificationsBell() {
       <Badge count={count} size="small" offset={[-2, 2]}>
         <Button
           type="text"
-          icon={<BellOutlined style={{ fontSize: 16, color: count > 0 ? "#EE3424" : "#999" }} />}
+          icon={<BellOutlined style={{ fontSize: 16, color: count > 0 ? "#EE3424" : themeToken.colorTextTertiary }} />}
           style={{ display: "flex", alignItems: "center" }}
         />
       </Badge>
@@ -161,11 +162,12 @@ function NotificationItem({
   declining: boolean;
 }) {
   const isInvite = n.type === "workspace_invite";
+  const { token: themeToken } = theme.useToken();
   return (
     <List.Item
       style={{
         padding: "10px 16px",
-        background: n.is_read ? "#fff" : "#FFF8F6",
+        background: n.is_read ? themeToken.colorBgElevated : themeToken.colorErrorBg,
         cursor: "pointer",
       }}
       onClick={() => !n.is_read && onMarkRead()}
@@ -179,7 +181,9 @@ function NotificationItem({
           {!n.is_read && <Tag color="red">Новое</Tag>}
         </Space>
         {n.body && (
-          <div style={{ marginTop: 4, color: "#666", fontSize: 12 }}>{n.body}</div>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0, fontSize: 12 }}>
+            {n.body}
+          </Typography.Paragraph>
         )}
         {isInvite && (
           <Space style={{ marginTop: 8 }} size="small">

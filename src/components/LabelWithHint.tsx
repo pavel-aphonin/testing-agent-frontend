@@ -1,5 +1,5 @@
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { Tooltip } from "antd";
+import { Tooltip, theme } from "antd";
 import type { ReactNode } from "react";
 
 /**
@@ -22,15 +22,16 @@ interface Props {
 }
 
 export function LabelWithHint({ label, hint, required }: Props) {
+  const { token } = theme.useToken();
   return (
     <span>
-      {required && <span style={{ color: "#ff4d4f", marginRight: 4 }}>*</span>}
+      {required && <span style={{ color: token.colorError, marginRight: 4 }}>*</span>}
       {label}
       {hint ? (
         <>
           {"\u00A0"}
           <Tooltip title={hint}>
-            <QuestionCircleOutlined style={{ color: "#999" }} />
+            <QuestionCircleOutlined style={{ color: token.colorTextTertiary }} />
           </Tooltip>
         </>
       ) : null}
