@@ -52,6 +52,7 @@ import {
 import { listKnowledgeDocuments } from "@/api/knowledge";
 import { listTestData } from "@/api/testData";
 import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
+import { JsonScenarioEditor } from "@/components/JsonScenarioEditor";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
 
@@ -975,18 +976,19 @@ export function AdminScenarioEdit() {
 
         {editorMode === "json" ? (
           <Form.Item label="JSON">
-            <Input.TextArea
-              rows={20}
-              style={{ fontFamily: "monospace", fontSize: 13 }}
+            {/* PER-74: Monaco-backed editor with format + {{test_data.*}} autocomplete. */}
+            <JsonScenarioEditor
               value={JSON.stringify({ steps }, null, 2)}
-              onChange={(e) => {
+              onChange={(s) => {
                 try {
-                  const p = JSON.parse(e.target.value);
+                  const p = JSON.parse(s);
                   handleStepsChange(p.steps ?? []);
                 } catch {
                   /* ignore while typing */
                 }
               }}
+              variables={tdataVars}
+              height={600}
             />
           </Form.Item>
         ) : editorMode === "flowchart" ? (
