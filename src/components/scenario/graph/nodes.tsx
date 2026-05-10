@@ -42,25 +42,22 @@ const ACTION_GLYPH: Record<ActionVerb, string> = {
   back: "↩",
 };
 
-// Handles need to be obviously grabbable — small dots were hard to
-// aim at, and any CSS that messes with React Flow's own ``transform``
-// breaks positioning. We bump the size and use box-shadow for the
-// hover halo so the hit target stays exactly where it's drawn.
+// Per React Flow's canonical "Add Node on Edge Drop" example:
+//   https://reactflow.dev/examples/nodes/add-node-on-edge-drop
+// We don't override transform/positioning or pointer-events — just
+// colour, size, and a small white ring so the dot is visible. The
+// rest is handled by React Flow's own gesture machinery.
 const HANDLE_STYLE = {
-  width: 18,
-  height: 18,
+  width: 14,
+  height: 14,
   background: "#EE3424",
-  border: "3px solid #fff",
-  boxShadow: "0 0 0 1.5px rgba(0,0,0,0.2)",
-  cursor: "crosshair",
+  border: "2px solid #fff",
 };
 
-/** Four handles, one per side of the node. ReactFlow's
- *  ``connectionMode="loose"`` (set on the GraphEditor's <ReactFlow>)
- *  lets each ``type="source"`` handle also act as a connection target,
- *  so the user can drag an arrow IN or OUT from any side regardless
- *  of which end they grabbed first. Unique ids per side keep edge
- *  serialisation stable. */
+/** Four handles, one per side of the node. ``connectionMode="loose"``
+ *  on the parent <ReactFlow> lets each ``type="source"`` handle act
+ *  as a target too, so a user can drag arrows IN or OUT from any
+ *  side. Unique ids per side keep edge serialisation stable. */
 function FourSidedHandles({ kind = "source" }: { kind?: "source" | "target" }) {
   return (
     <>
