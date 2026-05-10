@@ -119,24 +119,38 @@ function GraphEditorInner({
   const { screenToFlowPosition } = useReactFlow();
 
   // ── v2 graph → RF state ────────────────────────────────────────
+  //
+  // The editor owns its own RF state internally. Whenever it
+  // changes, we emit a fresh v2 graph up to the parent so the
+  // parent's dirty-flag knows the scenario has unsaved edits. The
+  // tricky bit is that the parent typically re-renders with a NEW
+  // identity for ``value`` after the emit (its own setState), and
+  // a naive useEffect on ``value`` would re-hydrate the editor
+  // from that echoed value — triggering another emit — triggering
+  // another echo — infinite loop, and the visible nodes flicker.
+  //
+  // We break the loop by JSON-comparing the parent's value against
+  // what we last emitted. If they match, the new value is just our
+  // own echo — skip the re-hydrate. If they differ, it's a real
+  // external change (parent loaded a different scenario, JSON tab
+  // pasted a different graph, etc.) — re-hydrate.
   const initial = useMemo(() => v2ToRf(value), [value]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges);
 
-  // Re-hydrate when the parent loads a new scenario (e.g. switching
-  // between scenarios in the same edit session).
-  const lastSeenValueRef = useRef(value);
+  const lastEmittedJsonRef = useRef<string>(JSON.stringify(value));
+
   useEffect(() => {
-    if (lastSeenValueRef.current === value) return;
-    lastSeenValueRef.current = value;
+    const incomingJson = JSON.stringify(value);
+    if (incomingJson === lastEmittedJsonRef.current) return;
+    lastEmittedJsonRef.current = incomingJson;
     const next = v2ToRf(value);
     setNodes(next.nodes);
     setEdges(next.edges);
   }, [value, setNodes, setEdges]);
 
-  // Push every RF change back up as a fresh v2 graph. We skip the
-  // very first emit (when nodes/edges equal the initial snapshot)
-  // so the parent's dirty-flag doesn't trip on mount.
+  // Skip the very first emit (the editor just mounted with the
+  // initial value — no real change yet).
   const isFirstEmitRef = useRef(true);
   useEffect(() => {
     if (isFirstEmitRef.current) {
@@ -144,10 +158,10 @@ function GraphEditorInner({
       return;
     }
     const next = rfToV2(nodes, edges, value.version);
+    const json = JSON.stringify(next);
+    if (json === lastEmittedJsonRef.current) return; // nothing new
+    lastEmittedJsonRef.current = json;
     onChange(next);
-    // ``onChange`` intentionally excluded — parents typically wrap it
-    // in useCallback but we don't want a re-emit just because the
-    // identity changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]);
 
