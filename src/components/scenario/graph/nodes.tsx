@@ -42,29 +42,17 @@ const ACTION_GLYPH: Record<ActionVerb, string> = {
   back: "↩",
 };
 
-// Per React Flow's canonical "Add Node on Edge Drop" example:
-//   https://reactflow.dev/examples/nodes/add-node-on-edge-drop
-// We don't override transform/positioning or pointer-events — just
-// colour, size, and a small white ring so the dot is visible. The
-// rest is handled by React Flow's own gesture machinery.
-const HANDLE_STYLE = {
-  width: 14,
-  height: 14,
-  background: "#EE3424",
-  border: "2px solid #fff",
-};
-
-/** Four handles, one per side of the node. ``connectionMode="loose"``
- *  on the parent <ReactFlow> lets each ``type="source"`` handle act
- *  as a target too, so a user can drag arrows IN or OUT from any
- *  side. Unique ids per side keep edge serialisation stable. */
+/** Four handles, one per side of the node, using React Flow's stock
+ *  styling — no inline overrides for colour / size / shape. RF's
+ *  ``connectionMode="loose"`` on the parent <ReactFlow> lets each
+ *  ``type="source"`` handle act as a target too. */
 function FourSidedHandles({ kind = "source" }: { kind?: "source" | "target" }) {
   return (
     <>
-      <Handle id="t" type={kind} position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="r" type={kind} position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="b" type={kind} position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="l" type={kind} position={Position.Left} style={HANDLE_STYLE} />
+      <Handle id="t" type={kind} position={Position.Top} />
+      <Handle id="r" type={kind} position={Position.Right} />
+      <Handle id="b" type={kind} position={Position.Bottom} />
+      <Handle id="l" type={kind} position={Position.Left} />
     </>
   );
 }
@@ -200,8 +188,8 @@ export function DecisionNode({ data }: NodeProps) {
       {/* Top + bottom handles for general drag-anywhere flow.
           ``connectionMode="loose"`` lets them act as either end of
           a connection. */}
-      <Handle id="t" type="source" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="b" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+      <Handle id="t" type="source" position={Position.Top} />
+      <Handle id="b" type="source" position={Position.Bottom} />
       <div
         style={{
           width: 96,
@@ -231,20 +219,12 @@ export function DecisionNode({ data }: NodeProps) {
           </Typography.Text>
         </div>
       </div>
-      {/* Two source handles — left = false / "no", right = true / "yes".
-          Edge conditions decide which one to take. */}
-      <Handle
-        id="false"
-        type="source"
-        position={Position.Left}
-        style={{ ...HANDLE_STYLE, background: "#cf1322" }}
-      />
-      <Handle
-        id="true"
-        type="source"
-        position={Position.Right}
-        style={{ ...HANDLE_STYLE, background: "#52c41a" }}
-      />
+      {/* Two source handles — left = false / "no", right = true /
+          "yes". Edge conditions decide which branch the worker
+          takes; the visual difference is left/right position alone.
+          Stock React Flow styling — no inline colour overrides. */}
+      <Handle id="false" type="source" position={Position.Left} />
+      <Handle id="true" type="source" position={Position.Right} />
     </div>
   );
 }

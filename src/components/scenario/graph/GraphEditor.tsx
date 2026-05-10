@@ -280,93 +280,35 @@ function GraphEditorInner({
   );
 
   // PER-84: synchronous validation pass. Memoised so we don't re-walk
-  // the graph on every pointer move.
+  // the graph on every pointer move. Surfaced via the banner above
+  // the canvas; we no longer overlay per-node highlights.
   const issues: ValidationIssue[] = useMemo(() => validateGraph(value), [value]);
   const errors = issues.filter((i) => i.severity === "error");
   const warnings = issues.filter((i) => i.severity === "warning");
-  const issuesByNode = useMemo(() => {
-    const m = new Map<string, ValidationIssue>();
-    for (const i of issues) {
-      if (i.target.startsWith("node:")) {
-        const id = i.target.slice("node:".length);
-        if (!m.has(id) || (i.severity === "error" && m.get(id)?.severity !== "error")) {
-          m.set(id, i);
-        }
-      }
-    }
-    return m;
-  }, [issues]);
 
-  // Validation highlight: was previously rendered via CSS ``outline``
-  // on the RF node wrapper, but ``outline`` ignores ``border-radius``
-  // and always paints the bounding rectangle — for our circular start/
-  // end nodes that produced a square red box around a round shape and
-  // gave the impression the node was a "stylised rectangle". The
-  // handles ARE positioned correctly (at the wrapper's cardinal points
-  // which match the circle's edge), but the rectangular outline made
-  // people mis-aim. Switching to ``filter: drop-shadow()`` which
-  // follows the actual rendered alpha mask — circles get a round halo,
-  // diamonds get a diamond halo, etc. No more bounding-box illusion.
-  const decoratedRfNodes: Node[] = useMemo(() => {
-    if (issuesByNode.size === 0) return rfNodes;
-    return rfNodes.map((n) => {
-      const issue = issuesByNode.get(n.id);
-      if (!issue) return n;
-      const colour =
-        issue.severity === "error" ? token.colorError : token.colorWarning;
-      return {
-        ...n,
-        style: {
-          ...(n.style ?? {}),
-          filter: `drop-shadow(0 0 4px ${colour}) drop-shadow(0 0 8px ${colour}66)`,
-        },
-      };
-    });
-  }, [rfNodes, issuesByNode, token]);
+  // Validation surfaces only through the banner above the canvas
+  // now — no per-node halo / outline. Earlier attempts (CSS outline,
+  // box-shadow, filter drop-shadow) all introduced visual noise or
+  // confused users about where the node's clickable area ended.
+  // The banner lists offending nodes by name, which is enough.
+  const decoratedRfNodes: Node[] = rfNodes;
   const rfEdges: Edge[] = useMemo(
     () =>
       value.edges.map((e) => {
-        // PER-83: surface condition expressions on the edge label
-        // so the user sees branching logic at a glance. Explicit
-        // ``data.label`` (set in the edge editor) wins over the
-        // auto-derived condition string.
+        // Edge labels still surface the condition expression / user
+        // label — that's part of our scenario semantics, not visual
+        // chrome. Everything else uses React Flow defaults.
         const explicit = e.data?.label;
         const cond = (e.data?.condition ?? "").toString().trim();
         const display = explicit || (cond ? cond : undefined);
-        const isLoop = Boolean(e.data?.loop);
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          // BPMN convention: solid orthogonal lines for normal flow,
-          // dashed amber lines for back-edges. Animation reserved
-          // for the run-time progress indicator (later) — at edit
-          // time it makes diagrams look unfinished.
-          type: "smoothstep",
-          animated: false,
-          markerEnd: { type: "arrowclosed", color: isLoop ? token.colorWarning : token.colorTextSecondary } as Edge["markerEnd"],
-          style: isLoop
-            ? {
-                stroke: token.colorWarning,
-                strokeDasharray: "6 4",
-                strokeWidth: 2,
-              }
-            : { stroke: token.colorTextSecondary, strokeWidth: 1.6 },
           label: display,
-          labelStyle: {
-            fontSize: 11,
-            fill: token.colorText,
-            fontFamily: cond && !explicit ? "monospace" : undefined,
-          },
-          labelBgStyle: {
-            fill: token.colorBgContainer,
-            fillOpacity: 0.92,
-          },
-          labelBgPadding: [4, 2] as [number, number],
-          labelBgBorderRadius: 4,
         };
       }),
-    [value.edges, token],
+    [value.edges],
   );
 
   // Selected node — drives the right-side editor drawer.
@@ -724,19 +666,9 @@ function GraphEditorInner({
 
   return (
     <>
-      {/* Minimal styling. Per React Flow docs we don't override
-          transform/positioning — those are how RF places the handle
-          relative to the node edge. We only add a subtle hover halo
-          (background-color tint, no transforms) so the user sees
-          the dot "wake up" on hover. */}
-      <style>{`
-        .react-flow__handle {
-          transition: box-shadow 120ms;
-        }
-        .react-flow__node:hover .react-flow__handle {
-          box-shadow: 0 0 0 4px rgba(238, 52, 36, 0.28);
-        }
-      `}</style>
+      {/* Stock React Flow visuals — no <style> overrides on the
+          handles, edges, or any other RF-rendered element. The user
+          asked for the library defaults; this is them. */}
 
       {/* ─── Compact toolbar ─────────────────────────────────────
           The Miro-style canvas does most of the heavy lifting via
@@ -905,24 +837,7 @@ function GraphEditorInner({
         >
           <Background />
           <Controls />
-          {/* MiniMap is overkill for an empty canvas — hide until we
-              actually have nodes to map. */}
-          {value.nodes.length > 0 && (
-            <MiniMap
-              pannable
-              zoomable
-              maskColor={
-                themeMode === "dark"
-                  ? "rgba(0, 0, 0, 0.6)"
-                  : "rgba(240, 240, 240, 0.6)"
-              }
-              nodeColor={() => token.colorPrimary}
-              style={{
-                background: token.colorBgElevated,
-                border: `1px solid ${token.colorBorderSecondary}`,
-              }}
-            />
-          )}
+          {value.nodes.length > 0 && <MiniMap pannable zoomable />}
         </ReactFlow>
 
         {/* Shape rail — vertical palette glued to the canvas's left
