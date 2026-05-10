@@ -55,7 +55,7 @@ import {
   Switch,
   Typography,
 } from "antd";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { listScenarioShapes } from "@/api/scenarioShapes";
 import { useQuery } from "@tanstack/react-query";
@@ -100,37 +100,156 @@ const CATEGORY_OPTIONS = [
 ];
 
 // ──────────────────────────────────────────────────────────────────────
-// Step 1 of the "add customisations back, one at a time" bisect:
-// a single custom node type for ``start``, rendered as a green
-// circle. Handles use React Flow's stock styling — no inline
-// overrides. This tests the hypothesis that visual customisations
-// are safe as long as we keep ``useNodesState`` driving RF's
-// internal state. If drag still works after this, the bug was
-// never the shapes — it was the old editor bypassing useNodesState.
+// Bisect step 4: full set of category shapes.
+//
+// Step 3 proved one custom shape works with useNodesState; now we
+// extend to every category. Each shape is a plain ``<div>`` with
+// stock ``<Handle>`` children — no CSS overrides on the handles
+// themselves. Top handle = target, bottom = source, matching the
+// vanilla "Add Node on Edge Drop" example. Start nodes have only
+// a source (nothing flows in), end nodes have only a target.
+//
+// All shapes share two base style blocks so visual tweaks stay in
+// one place; per-category overrides are limited to background +
+// border-radius. Sizes are intentionally close to React Flow's
+// default rectangle so the canvas feel doesn't shift.
+
+const CARD_BASE: CSSProperties = {
+  minWidth: 130,
+  minHeight: 40,
+  padding: "8px 14px",
+  borderRadius: 6,
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 500,
+  fontSize: 13,
+  textAlign: "center",
+  lineHeight: 1.25,
+};
+
+const CIRCLE_BASE: CSSProperties = {
+  width: 86,
+  height: 86,
+  borderRadius: "50%",
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 600,
+  fontSize: 13,
+  textAlign: "center",
+  padding: 6,
+  lineHeight: 1.2,
+};
 
 function StartNodeCircle({ data }: NodeProps) {
   return (
-    <div
-      style={{
-        width: 80,
-        height: 80,
-        borderRadius: "50%",
-        background: "#52c41a",
-        color: "#fff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 600,
-        fontSize: 13,
-      }}
-    >
+    <div style={{ ...CIRCLE_BASE, background: "#52c41a" }}>
       <Handle type="source" position={Position.Bottom} />
       {(data?.label as string) ?? "Начало"}
     </div>
   );
 }
 
-const SCENARIO_NODE_TYPES = { start: StartNodeCircle };
+function EndNodeCircle({ data }: NodeProps) {
+  return (
+    <div style={{ ...CIRCLE_BASE, background: "#f5222d" }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Конец"}
+    </div>
+  );
+}
+
+function ActionNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#1677ff" }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Действие"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function DecisionNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#fa8c16", borderRadius: 24 }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Условие"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function WaitNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#8c8c8c", borderRadius: 999 }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Пауза"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function ScreenCheckNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#722ed1" }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Проверка экрана"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function SubScenarioNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#13c2c2" }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Связанный сценарий"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function LoopBackNodeCard({ data }: NodeProps) {
+  return (
+    <div style={{ ...CARD_BASE, background: "#d4b106", borderRadius: 24 }}>
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Возврат"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function GroupNodeCard({ data }: NodeProps) {
+  return (
+    <div
+      style={{
+        ...CARD_BASE,
+        background: "transparent",
+        color: "#595959",
+        border: "1px dashed #bfbfbf",
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      {(data?.label as string) ?? "Группа"}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+const SCENARIO_NODE_TYPES = {
+  start: StartNodeCircle,
+  end: EndNodeCircle,
+  action: ActionNodeCard,
+  decision: DecisionNodeCard,
+  wait: WaitNodeCard,
+  screen_check: ScreenCheckNodeCard,
+  sub_scenario: SubScenarioNodeCard,
+  loop_back: LoopBackNodeCard,
+  group: GroupNodeCard,
+};
 
 // ──────────────────────────────────────────────────────────────────────
 
@@ -221,6 +340,7 @@ function GraphEditorInner({
     const newNode: Node = {
       id,
       position,
+      type: DEFAULT_CATEGORY,
       data: { label: "Новый шаг", _category: DEFAULT_CATEGORY },
     };
     setNodes((nds) => nds.concat(newNode));
@@ -250,6 +370,7 @@ function GraphEditorInner({
       const newNode: Node = {
         id,
         position,
+        type: DEFAULT_CATEGORY,
         data: { label: "Новый шаг", _category: DEFAULT_CATEGORY },
       };
       setNodes((nds) => nds.concat(newNode));
@@ -276,9 +397,20 @@ function GraphEditorInner({
   const updateSelectedNodeData = (patch: Record<string, unknown>) => {
     if (!selectedNodeId) return;
     setNodes((nds) =>
-      nds.map((n) =>
-        n.id === selectedNodeId ? { ...n, data: { ...n.data, ...patch } } : n,
-      ),
+      nds.map((n) => {
+        if (n.id !== selectedNodeId) return n;
+        const nextData = { ...n.data, ...patch };
+        // If the user switched category in the drawer, also swap
+        // the RF type so the new shape renders immediately. Falling
+        // back to ``undefined`` keeps RF on its default rectangle
+        // for categories we haven't registered a shape for.
+        let nextType = n.type;
+        if ("_category" in patch) {
+          const cat = String(patch._category);
+          nextType = cat in SCENARIO_NODE_TYPES ? cat : undefined;
+        }
+        return { ...n, type: nextType, data: nextData };
+      }),
     );
   };
   const deleteSelectedNode = () => {
