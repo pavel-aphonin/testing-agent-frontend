@@ -28,7 +28,9 @@ import {
   addEdge,
   Background,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -36,6 +38,7 @@ import {
   useReactFlow,
   type Edge,
   type Node,
+  type NodeProps,
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStart,
@@ -95,6 +98,39 @@ const CATEGORY_OPTIONS = [
   { value: "loop_back", label: "Возврат" },
   { value: "group", label: "Группа" },
 ];
+
+// ──────────────────────────────────────────────────────────────────────
+// Step 1 of the "add customisations back, one at a time" bisect:
+// a single custom node type for ``start``, rendered as a green
+// circle. Handles use React Flow's stock styling — no inline
+// overrides. This tests the hypothesis that visual customisations
+// are safe as long as we keep ``useNodesState`` driving RF's
+// internal state. If drag still works after this, the bug was
+// never the shapes — it was the old editor bypassing useNodesState.
+
+function StartNodeCircle({ data }: NodeProps) {
+  return (
+    <div
+      style={{
+        width: 80,
+        height: 80,
+        borderRadius: "50%",
+        background: "#52c41a",
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 600,
+        fontSize: 13,
+      }}
+    >
+      <Handle type="source" position={Position.Bottom} />
+      {(data?.label as string) ?? "Начало"}
+    </div>
+  );
+}
+
+const SCENARIO_NODE_TYPES = { start: StartNodeCircle };
 
 // ──────────────────────────────────────────────────────────────────────
 
@@ -337,6 +373,7 @@ function GraphEditorInner({
           fitView
           fitViewOptions={{ padding: 2 }}
           nodeOrigin={[0.5, 0]}
+          nodeTypes={SCENARIO_NODE_TYPES}
         >
           <Background />
           <Controls />
@@ -600,19 +637,29 @@ function EdgeForm({
 // v2 ↔ RF conversion
 
 function v2ToRf(graph: ScenarioGraphV2): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = (graph.nodes ?? []).map((n) => ({
-    id: n.id,
-    position: n.position ?? { x: 0, y: 0 },
-    data: {
-      ...(n.data ?? {}),
-      _category: n.type,
-      label:
-        (n.data as { element_label?: string; label?: string } | undefined)
-          ?.label ??
-        (n.data as { element_label?: string } | undefined)?.element_label ??
-        labelForCategory(n.type),
-    },
-  }));
+  const nodes: Node[] = (graph.nodes ?? []).map((n) => {
+    const base: Node = {
+      id: n.id,
+      position: n.position ?? { x: 0, y: 0 },
+      data: {
+        ...(n.data ?? {}),
+        _category: n.type,
+        label:
+          (n.data as { element_label?: string; label?: string } | undefined)
+            ?.label ??
+          (n.data as { element_label?: string } | undefined)?.element_label ??
+          labelForCategory(n.type),
+      },
+    };
+    // Activate the custom shape only for categories that have a
+    // matching React Flow node type registered. Every other category
+    // still renders as RF's default rectangle — same baseline that
+    // was confirmed working in /rf-test.
+    if (n.type in SCENARIO_NODE_TYPES) {
+      base.type = n.type;
+    }
+    return base;
+  });
   const edges: Edge[] = (graph.edges ?? []).map((e) => ({
     id: e.id,
     source: e.source,
