@@ -203,11 +203,18 @@ function GraphEditorInner({
   );
 
   // Tracks the source of an in-progress drag from a handle. Set on
-  // onConnectStart, cleared on onConnectEnd. When the drag ends in
-  // empty pane we use this id as the source of the new edge.
-  const connectStartRef = useRef<{ nodeId: string; handleId?: string | null } | null>(
-    null,
-  );
+  // onConnectStart, cleared on onConnectEnd. We also stash the
+  // initial mouse coords so onConnectEnd can tell a deliberate
+  // drag (mouse moved >= a few pixels) from a "just a click on the
+  // handle" gesture (no movement) — clicks auto-place the next
+  // node in the handle's direction without forcing the user to
+  // drag a line.
+  const connectStartRef = useRef<{
+    nodeId: string;
+    handleId?: string | null;
+    startX: number;
+    startY: number;
+  } | null>(null);
 
   // Floating shape picker. ``screenX/Y`` are viewport coords for the
   // popup placement; ``flowX/Y`` are graph coords for the new node.
@@ -531,15 +538,26 @@ function GraphEditorInner({
 
   const handleConnectStart = useCallback<
     NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectStart"]>
-  >((_event, params) => {
+  >((event, params) => {
     // PER-86 followup: with ``connectionMode="loose"`` users can grab
     // any handle (source OR target) and drag from it. We capture the
     // node id regardless of handleType so the drag-into-empty-pane
     // flow can wire an outgoing edge from this node.
+    const nativeEvent = (event as unknown as { clientX?: number; clientY?: number; touches?: TouchList });
+    const startX =
+      nativeEvent.touches && nativeEvent.touches.length > 0
+        ? nativeEvent.touches[0].clientX
+        : nativeEvent.clientX ?? 0;
+    const startY =
+      nativeEvent.touches && nativeEvent.touches.length > 0
+        ? nativeEvent.touches[0].clientY
+        : nativeEvent.clientY ?? 0;
     if (params.nodeId) {
       connectStartRef.current = {
         nodeId: params.nodeId,
         handleId: params.handleId ?? null,
+        startX,
+        startY,
       };
     } else {
       connectStartRef.current = null;
@@ -555,18 +573,13 @@ function GraphEditorInner({
       if (!start) return;
       // React Flow v12 hands us the final connection state — if the
       // drop landed on a real target handle, ``isValid`` is true and
-      // ``onConnect`` already created the edge. We only handle the
-      // dropped-in-empty-space case (``isValid`` false / ``toNode``
-      // null) — that's when we open the shape picker so the user
-      // can pick what kind of node should appear here.
+      // ``onConnect`` already created the edge.
       if (connectionState && connectionState.isValid) return;
-      // ``toNode`` is null when the gesture didn't land on any node.
-      // We accept either signal so future RF versions that change
-      // the contract don't break us silently.
       const toNode =
         (connectionState as { toNode?: unknown } | undefined)?.toNode;
       if (toNode) return;
 
+      // Resolve the cursor's release coords (mouse OR touch).
       const point =
         "touches" in event && (event as TouchEvent).touches.length > 0
           ? {
@@ -583,17 +596,66 @@ function GraphEditorInner({
               x: (event as MouseEvent).clientX,
               y: (event as MouseEvent).clientY,
             };
-      const flow = rfApi.screenToFlowPosition(point);
+
+      // Click vs drag: if the cursor barely moved, treat it as a
+      // click on the handle and auto-place the next node in the
+      // handle's direction. Drag (movement >= 8 px) keeps the old
+      // "drop wherever" behaviour.
+      const moved = Math.hypot(
+        point.x - start.startX,
+        point.y - start.startY,
+      );
+      const wasClick = moved < 8;
+
+      let flow: { x: number; y: number };
+      let screen: { x: number; y: number };
+
+      if (wasClick) {
+        // Place the new node a fixed distance from the source's
+        // edge in the direction of the clicked handle. Source-node
+        // position is the top-left, so we add half-width/half-height
+        // to start from its centre.
+        const source = value.nodes.find((n) => n.id === start.nodeId);
+        if (!source) return;
+        const NODE_HALF_W = 90;
+        const NODE_HALF_H = 50;
+        const STEP_H = 240;
+        const STEP_V = 200;
+        const dirOffset: Record<string, { x: number; y: number }> = {
+          t: { x: 0, y: -STEP_V },
+          r: { x: STEP_H, y: 0 },
+          b: { x: 0, y: STEP_V },
+          l: { x: -STEP_H, y: 0 },
+          // Decision's left/right semantic handles use these ids:
+          true: { x: STEP_H, y: 80 },
+          false: { x: -STEP_H, y: 80 },
+        };
+        const off = dirOffset[start.handleId ?? "b"] ?? dirOffset.b;
+        flow = {
+          x: (source.position?.x ?? 0) + NODE_HALF_W + off.x,
+          y: (source.position?.y ?? 0) + NODE_HALF_H + off.y,
+        };
+        // For the picker popup we need viewport coords too so the
+        // floating menu lands near where the user is looking.
+        const screenPos = rfApi.flowToScreenPosition?.(flow);
+        screen = screenPos
+          ? { x: screenPos.x, y: screenPos.y }
+          : { x: point.x, y: point.y };
+      } else {
+        flow = rfApi.screenToFlowPosition(point);
+        screen = { x: point.x, y: point.y };
+      }
+
       setPicker({
-        screenX: point.x,
-        screenY: point.y,
+        screenX: screen.x,
+        screenY: screen.y,
         flowX: flow.x,
         flowY: flow.y,
         sourceId: start.nodeId,
         sourceHandle: start.handleId ?? null,
       });
     },
-    [rfApi],
+    [rfApi, value.nodes],
   );
 
   // Empty-canvas first-node CTA: when the user clicks the centre of
@@ -707,13 +769,14 @@ function GraphEditorInner({
           - We never touch ``transform`` on the handle itself —
             React Flow positions handles via per-side translate(...)
             and overriding it shifts the visual dot away from its
-            hit target, so clicks land on the pane and pan it.
-          - The visual halo is done via box-shadow.
-          - The CRITICAL bit: each handle has an invisible ``::before``
-            ring that extends the pointer hit area to ~36×36, so a
-            user grabbing slightly off the visible 18×18 dot still
-            starts a connection instead of dragging the node body /
-            panning the canvas. */}
+            hit target.
+          - Visible halo via box-shadow.
+          - Invisible ``::before`` ring extends the pointer hit area
+            to ~36×36 so a slightly off click still starts a drag.
+          - ``::after`` shows a directional arrow on hover that
+            points outward from the node — it doubles as a
+            "click here to add a node in this direction" hint, and
+            is purely visual (pointer-events: none). */}
       <style>{`
         .react-flow__node .react-flow__handle {
           opacity: 1;
@@ -725,13 +788,38 @@ function GraphEditorInner({
           position: absolute;
           inset: -10px;
           border-radius: 50%;
-          /* Transparent — only there to widen the hit area. */
           background: transparent;
+        }
+        .react-flow__node .react-flow__handle::after {
+          position: absolute;
+          color: #ee3424;
+          font-size: 18px;
+          font-weight: 800;
+          line-height: 1;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 120ms;
+          text-shadow: 0 0 4px rgba(0,0,0,0.3);
+        }
+        .react-flow__node .react-flow__handle.react-flow__handle-top::after {
+          content: "↑"; left: 50%; top: -22px; transform: translateX(-50%);
+        }
+        .react-flow__node .react-flow__handle.react-flow__handle-right::after {
+          content: "→"; left: 22px; top: 50%; transform: translateY(-50%);
+        }
+        .react-flow__node .react-flow__handle.react-flow__handle-bottom::after {
+          content: "↓"; left: 50%; bottom: -22px; transform: translateX(-50%);
+        }
+        .react-flow__node .react-flow__handle.react-flow__handle-left::after {
+          content: "←"; right: 22px; top: 50%; transform: translateY(-50%);
         }
         .react-flow__node:hover .react-flow__handle {
           box-shadow:
             0 0 0 1.5px rgba(0,0,0,0.2),
             0 0 0 6px rgba(238, 52, 36, 0.22);
+        }
+        .react-flow__node:hover .react-flow__handle::after {
+          opacity: 0.85;
         }
         .react-flow__handle.connectionindicator,
         .react-flow__handle {
