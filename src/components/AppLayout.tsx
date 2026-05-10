@@ -193,6 +193,11 @@ export function AppLayout() {
       icon: <PlayCircleOutlined />,
       label: <Link to="/admin/scenarios">{t("nav.scenarios")}</Link>,
     });
+    wsItems.push({
+      key: "/admin/scenario-shapes",
+      icon: <AntIcons.AppstoreOutlined />,
+      label: <Link to="/admin/scenario-shapes">Фигуры сценариев</Link>,
+    });
   }
   if (hasPerm("test_data.view")) {
     wsItems.push({

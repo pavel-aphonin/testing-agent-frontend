@@ -20,18 +20,11 @@
 
 import {
   ApartmentOutlined,
-  ArrowLeftOutlined,
   BlockOutlined,
-  BranchesOutlined,
-  ClockCircleOutlined,
   ClusterOutlined,
   DeleteOutlined,
-  EyeOutlined,
-  LinkOutlined,
   PlayCircleOutlined,
-  PoweroffOutlined,
   QuestionCircleOutlined,
-  ThunderboltOutlined,
 } from "@ant-design/icons";
 import {
   Background,
@@ -71,8 +64,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useThemeStore } from "@/store/theme";
 
+import { useQuery } from "@tanstack/react-query";
+
+import { listScenarioShapes } from "@/api/scenarioShapes";
+import type { ScenarioShapeRead } from "@/types";
+
 import { autoLayout } from "./autoLayout";
-import { SCENARIO_NODE_TYPES } from "./nodes";
+import { SCENARIO_NODE_TYPES, getIconNode } from "./nodes";
 import {
   newNodeId,
   type ActionNodeData,
@@ -106,90 +104,38 @@ interface Props {
   height?: number;
 }
 
-/** Shape choices shown in the picker that pops up after dropping a
- *  drag in empty space, and in the empty-canvas first-node CTA. */
-const SHAPES: {
-  type: GraphNodeType;
+/** Picker / palette item — derived from the scenario_shapes
+ *  dictionary at runtime. The category is used as React Flow's
+ *  ``node.type`` so the runtime renderer dispatches to the right
+ *  geometry component, and ``code`` is stored in ``data.shape_code``
+ *  for backend resolution. */
+interface ShapeItem {
+  code: string;
+  category: string;
   label: string;
   hint: string;
   icon: React.ReactNode;
-}[] = [
-  {
-    type: "start",
-    label: "Начало",
-    hint: "Точка входа в сценарий. Должна быть одна.",
-    icon: <PlayCircleOutlined />,
-  },
-  {
-    type: "action",
-    label: "Действие",
-    hint: "Тап / ввод / свайп / проверка элемента.",
-    icon: <ThunderboltOutlined />,
-  },
-  {
-    type: "decision",
-    label: "Условие",
-    hint: "Ветвление по выражению на исходящих стрелках.",
-    icon: <BranchesOutlined />,
-  },
-  {
-    type: "wait",
-    label: "Пауза",
-    hint: "Ждать заданное число миллисекунд.",
-    icon: <ClockCircleOutlined />,
-  },
-  {
-    type: "screen_check",
-    label: "Проверить экран",
-    hint: "Сверить текущий экран с описанием через ИИ.",
-    icon: <EyeOutlined />,
-  },
-  {
-    type: "sub_scenario",
-    label: "Связанный сценарий",
-    hint: "Запустить другой сценарий и вернуться сюда.",
-    icon: <LinkOutlined />,
-  },
-  {
-    type: "loop_back",
-    label: "Возврат",
-    hint: "Указатель «вернуться в начало цикла». Используется в паре с back-edge.",
-    icon: <ArrowLeftOutlined />,
-  },
-  {
-    type: "group",
-    label: "Группа",
-    hint: "Визуальный контейнер. Перетащите внутрь узлы, чтобы объединить смысловой блок.",
-    icon: <BlockOutlined />,
-  },
-  {
-    type: "end",
-    label: "Конец",
-    hint: "Точка выхода. Может быть несколько (но обычно одна).",
-    icon: <PoweroffOutlined />,
-  },
-];
+}
 
-// Default field values for each new node type.
-function defaultDataFor(type: GraphNodeType): Record<string, unknown> {
-  switch (type) {
-    case "action":
-      return { action: "tap", element_label: "" } as ActionNodeData;
-    case "decision":
-      return { label: "Условие" };
-    case "wait":
-      return { ms: 1000 };
-    case "screen_check":
-      return { screen_description: "" };
-    case "loop_back":
-      return { max_iterations: 10 };
-    case "sub_scenario":
-      return { linked_scenario_id: undefined };
-    case "group":
-      return { label: "Группа" };
-    default:
-      return {};
+/** Build the default ``data`` payload for a freshly-added node from
+ *  the shape's attribute schema — every attribute with a ``default``
+ *  becomes a starting value, the rest stay unset. The action verb
+ *  is also seeded from ``shape.action_code`` so the worker has
+ *  something to dispatch on if the user saves without editing. */
+function defaultDataForShape(
+  shape: ScenarioShapeRead | undefined,
+): Record<string, unknown> {
+  if (!shape) return {};
+  const data: Record<string, unknown> = { shape_code: shape.code };
+  for (const attr of shape.attributes ?? []) {
+    if (attr.default !== undefined && attr.default !== null) {
+      data[attr.key] = attr.default;
+    }
   }
+  if (shape.category === "action" && shape.action_code && !data.action) {
+    data.action = shape.action_code;
+  }
+  return data;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -223,6 +169,38 @@ function GraphEditorInner({
   // the picker without a code change.
   const dicts = useScenarioDictionaries(workspaceId ?? null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  // PER-90: shape palette comes from the scenario_shapes dictionary,
+  // not a hardcoded array. Built-ins are seeded by the backend so
+  // this list is never empty in practice.
+  const shapesQ = useQuery({
+    queryKey: ["scenario-shapes"],
+    queryFn: listScenarioShapes,
+    staleTime: 5 * 60_000,
+  });
+  const shapes = shapesQ.data ?? [];
+  const shapeByCode = useMemo(() => {
+    const m = new Map<string, ScenarioShapeRead>();
+    for (const s of shapes) m.set(s.code, s);
+    return m;
+  }, [shapes]);
+  const shapeItems: ShapeItem[] = useMemo(
+    () =>
+      shapes
+        .slice()
+        .sort(
+          (a, b) =>
+            a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+        )
+        .map((s) => ({
+          code: s.code,
+          category: s.category,
+          label: s.name,
+          hint: s.description ?? "",
+          icon: getIconNode(s.icon),
+        })),
+    [shapes],
+  );
 
   // Tracks the source of an in-progress drag from a handle. Set on
   // onConnectStart, cleared on onConnectEnd. When the drag ends in
@@ -629,23 +607,27 @@ function GraphEditorInner({
    */
   const addNodeAt = useCallback(
     (
-      type: GraphNodeType,
+      shapeCode: string,
       flowPos: { x: number; y: number },
       sourceId: string | null,
       sourceHandle: string | null,
     ) => {
-      if (
-        type === "start" &&
-        value.nodes.some((n) => n.type === "start")
-      ) {
+      const shape = shapeByCode.get(shapeCode);
+      if (!shape) return;
+      const category = shape.category as GraphNodeType;
+      // Only one start per scenario.
+      if (category === "start" && value.nodes.some((n) => n.type === "start")) {
         return;
       }
-      const id = newNodeId(type[0]);
+      const id = newNodeId(category[0]);
       const node: GraphNode = {
         id,
-        type,
+        // ``type`` drives React Flow's renderer dispatch — we route
+        // it through the category so any shape with category="action"
+        // uses the shared action-node renderer, etc.
+        type: category,
         position: { x: flowPos.x - 80, y: flowPos.y - 24 },
-        data: defaultDataFor(type),
+        data: defaultDataForShape(shape),
       };
       const edges: GraphEdge[] = [...value.edges];
       if (sourceId) {
@@ -659,7 +641,7 @@ function GraphEditorInner({
       onChange({ ...value, nodes: [...value.nodes, node], edges });
       setSelectedId(id);
     },
-    [value, onChange],
+    [value, onChange, shapeByCode],
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -754,23 +736,16 @@ function GraphEditorInner({
             icon={<BlockOutlined />}
             size="small"
             onClick={() => {
-              // The group-node lifecycle is identical to other shapes
-              // — we drop one in at a sensible default location.
-              const id = newNodeId("g");
+              // Drop the group at the bottom of the existing layout
+              // so it doesn't cover anything; addNodeAt handles the
+              // shape lookup + default-data plumbing.
               const ys = value.nodes.map((n) => n.position?.y ?? 0);
-              onChange({
-                ...value,
-                nodes: [
-                  ...value.nodes,
-                  {
-                    id,
-                    type: "group",
-                    position: { x: 0, y: Math.max(...ys, 0) + 200 },
-                    data: { label: "Группа" },
-                  },
-                ],
-              });
-              setSelectedId(id);
+              addNodeAt(
+                "group",
+                { x: 200, y: Math.max(...ys, 0) + 280 },
+                null,
+                null,
+              );
             }}
           >
             Группа
@@ -950,10 +925,11 @@ function GraphEditorInner({
         {picker && (
           <ShapePicker
             picker={picker}
+            items={shapeItems}
             existingHasStart={value.nodes.some((n) => n.type === "start")}
-            onPick={(type) => {
+            onPick={(code) => {
               addNodeAt(
-                type,
+                code,
                 { x: picker.flowX, y: picker.flowY },
                 picker.sourceId,
                 picker.sourceHandle,
@@ -1018,7 +994,7 @@ function GraphEditorInner({
         title="Подсказка по фигурам"
         destroyOnHidden
       >
-        <ShapeHelp />
+        <ShapeHelp items={shapeItems} />
       </Drawer>
     </>
   );
@@ -1029,6 +1005,7 @@ function GraphEditorInner({
 
 function ShapePicker({
   picker,
+  items,
   existingHasStart,
   onPick,
   onCancel,
@@ -1041,8 +1018,9 @@ function ShapePicker({
     sourceId: string | null;
     sourceHandle: string | null;
   };
+  items: ShapeItem[];
   existingHasStart: boolean;
-  onPick: (type: GraphNodeType) => void;
+  onPick: (code: string) => void;
   onCancel: () => void;
 }) {
   // The picker lives in viewport coords (position: fixed) so its
@@ -1051,21 +1029,17 @@ function ShapePicker({
   // dismiss backdrop so the user can opt out of the gesture.
   const { token } = theme.useToken();
 
-  // Filter shapes:
-  //  * always hide ``start`` from the inline picker when one already
-  //    exists (only one start is valid per scenario)
-  //  * always hide the duplicate ``end`` when the picker was invoked
-  //    from a drag — adding an end requires an explicit drop, which
-  //    is what the inline picker is, so we keep it visible there.
-  const items = SHAPES.filter((s) => {
-    if (s.type === "start" && existingHasStart) return false;
+  // Hide ``start`` from the picker when one already exists — only
+  // one start is valid per scenario.
+  const visible = items.filter((s) => {
+    if (s.category === "start" && existingHasStart) return false;
     return true;
   });
 
   // Clamp horizontally so the menu doesn't fall off the viewport
   // edge for drops near the right.
-  const left = Math.min(picker.screenX + 12, window.innerWidth - 220);
-  const top = Math.min(picker.screenY - 8, window.innerHeight - 320);
+  const left = Math.min(picker.screenX + 12, window.innerWidth - 240);
+  const top = Math.min(picker.screenY - 8, window.innerHeight - 360);
 
   return (
     <>
@@ -1090,8 +1064,8 @@ function ShapePicker({
           borderRadius: 8,
           boxShadow: token.boxShadowSecondary,
           padding: 6,
-          width: 220,
-          maxHeight: 360,
+          width: 240,
+          maxHeight: 380,
           overflowY: "auto",
         }}
       >
@@ -1101,11 +1075,11 @@ function ShapePicker({
         >
           Выберите фигуру
         </Typography.Text>
-        {items.map((s) => (
-          <Tooltip key={s.type} title={s.hint} placement="right">
+        {visible.map((s) => (
+          <Tooltip key={s.code} title={s.hint} placement="right">
             <div
               role="button"
-              onClick={() => onPick(s.type)}
+              onClick={() => onPick(s.code)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1138,7 +1112,7 @@ function ShapePicker({
 // In-app glossary — explains every shape so first-time users know
 // what to pick. Surfaced via the "Что есть что" toolbar button.
 
-function ShapeHelp() {
+function ShapeHelp({ items }: { items: ShapeItem[] }) {
   const { token } = theme.useToken();
   return (
     <div>
@@ -1147,9 +1121,9 @@ function ShapeHelp() {
         стрелкам от «Начала» к «Концу», выполняя действия в узлах.
       </Typography.Paragraph>
       <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-        {SHAPES.map((s) => (
+        {items.map((s) => (
           <li
-            key={s.type}
+            key={s.code}
             style={{
               display: "flex",
               gap: 12,

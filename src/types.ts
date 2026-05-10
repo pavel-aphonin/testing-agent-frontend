@@ -956,6 +956,81 @@ export interface AgentSettingsUpdate {
   hidden_nav_items?: string[] | null | undefined;
 }
 
+// ----------------------------------------------------------------- Scenario shapes (PER-90)
+
+export interface ScenarioShapeAttribute {
+  /** Stable key written into ``node.data``. */
+  key: string;
+  /** Display label in the edit drawer. */
+  label: string;
+  /** Field control kind:
+   *   - ``string`` (single-line input or textarea via ``multiline``)
+   *   - ``number`` (numeric input)
+   *   - ``boolean`` (switch)
+   *   - ``action_verb`` (Select sourced from scenario_actions dict)
+   *   - ``scenario_link`` (Select of other scenarios in the workspace)
+   *   - anything else → renders as a plain string input. */
+  type: string;
+  required?: boolean;
+  default?: unknown;
+  /** When set, ``string`` inputs become AutoComplete sourced from the
+   *  named custom dictionary (e.g. ``ui_elements``). */
+  supports_dict?: string;
+  /** Hint for the editor to allow ``{{test_data.X}}`` interpolation. */
+  supports_vars?: boolean;
+  multiline?: boolean;
+}
+
+export interface ScenarioShapeRead {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  /** Runtime semantics — the worker dispatches on this. */
+  category: string;
+  /** Render geometry primitive: circle / rect / diamond / pill /
+   *  trapezoid / hexagon / container. */
+  geometry: string;
+  color: string;
+  icon: string | null;
+  /** For category="action" shapes: the action verb the worker runs.
+   *  References a row in the ``scenario_actions`` workspace dict
+   *  (or a built-in verb like ``tap``). */
+  action_code: string | null;
+  attributes: ScenarioShapeAttribute[];
+  is_builtin: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface ScenarioShapeCreate {
+  code: string;
+  name: string;
+  description?: string;
+  category: string;
+  geometry: string;
+  color?: string;
+  icon?: string | null;
+  action_code?: string | null;
+  attributes?: ScenarioShapeAttribute[];
+  sort_order?: number;
+}
+
+export interface ScenarioShapeUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string | null;
+  action_code?: string | null;
+  attributes?: ScenarioShapeAttribute[];
+  sort_order?: number;
+  /** Editable on custom shapes, locked on built-ins. */
+  code?: string;
+  category?: string;
+  geometry?: string;
+}
+
 // ----------------------------------------------------------------- Scenarios
 
 export interface ScenarioRead {

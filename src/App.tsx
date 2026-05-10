@@ -19,6 +19,7 @@ import { AdminDevices } from "@/pages/AdminDevices";
 import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
 import { AdminScenarios, AdminScenarioEdit } from "@/pages/AdminScenarios";
+import { AdminScenarioShapes } from "@/pages/AdminScenarioShapes";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
 import { AdminApps } from "@/pages/AdminApps";
@@ -212,6 +213,14 @@ export default function App() {
             element={
               <ProtectedRoute requirePermission="scenarios.view">
                 <AdminScenarioEdit />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/scenario-shapes"
+            element={
+              <ProtectedRoute requirePermission="scenarios.view">
+                <AdminScenarioShapes />
               </ProtectedRoute>
             }
           />

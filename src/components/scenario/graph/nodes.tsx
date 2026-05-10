@@ -8,6 +8,7 @@
  * Markov's identity rather than the dark/light palette.
  */
 
+import * as AntIcons from "@ant-design/icons";
 import {
   ArrowLeftOutlined,
   CheckOutlined,
@@ -435,3 +436,18 @@ export const SCENARIO_NODE_TYPES = {
 // future use without rendering them yet.
 void ThunderboltOutlined;
 void CheckOutlined;
+
+/** Resolves a shape's ``icon`` field — either an @ant-design/icons
+ *  component name (renders the component) or a single emoji /
+ *  short string (renders verbatim). Falls back to a question mark
+ *  for unknown values so the canvas never has a hole. */
+export function getIconNode(name: string | null | undefined): React.ReactNode {
+  if (!name) return <QuestionCircleOutlined />;
+  // Short strings = emoji / unicode glyph.
+  if (name.length <= 4 && !/^[A-Z]/.test(name)) {
+    return <span style={{ fontSize: 16 }}>{name}</span>;
+  }
+  const Icon = (AntIcons as unknown as Record<string, React.ComponentType<{ style?: React.CSSProperties }>>)[name];
+  if (Icon) return <Icon />;
+  return <QuestionCircleOutlined />;
+}
