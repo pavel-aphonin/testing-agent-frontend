@@ -297,10 +297,16 @@ function GraphEditorInner({
     return m;
   }, [issues]);
 
-  // Inject a coloured outline on nodes that have validation issues so
-  // the user can see the offending vertices without reading the
-  // banner. Recomputed in a separate memo so the rfNodes memo above
-  // doesn't have to depend on issues (cleaner cache invalidation).
+  // Validation highlight: was previously rendered via CSS ``outline``
+  // on the RF node wrapper, but ``outline`` ignores ``border-radius``
+  // and always paints the bounding rectangle — for our circular start/
+  // end nodes that produced a square red box around a round shape and
+  // gave the impression the node was a "stylised rectangle". The
+  // handles ARE positioned correctly (at the wrapper's cardinal points
+  // which match the circle's edge), but the rectangular outline made
+  // people mis-aim. Switching to ``filter: drop-shadow()`` which
+  // follows the actual rendered alpha mask — circles get a round halo,
+  // diamonds get a diamond halo, etc. No more bounding-box illusion.
   const decoratedRfNodes: Node[] = useMemo(() => {
     if (issuesByNode.size === 0) return rfNodes;
     return rfNodes.map((n) => {
@@ -312,14 +318,10 @@ function GraphEditorInner({
         ...n,
         style: {
           ...(n.style ?? {}),
-          outline: `2px solid ${colour}`,
-          outlineOffset: 2,
-          borderRadius: 8,
+          filter: `drop-shadow(0 0 4px ${colour}) drop-shadow(0 0 8px ${colour}66)`,
         },
       };
     });
-    // ``token`` deps because outline colour reads tokens — kept so
-    // theme switches re-render highlights.
   }, [rfNodes, issuesByNode, token]);
   const rfEdges: Edge[] = useMemo(
     () =>
