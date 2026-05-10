@@ -25,7 +25,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams, useBlocker } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ReactFlow,
   Background,
@@ -730,6 +730,7 @@ export function AdminScenarios() {
 export function AdminScenarioEdit() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const workspace = useWorkspaceStore((s) => s.current);
@@ -783,23 +784,26 @@ export function AdminScenarioEdit() {
   };
   const handleFormChange = () => setIsDirty(true);
 
-  // PER-69: warn on navigate-away inside the SPA
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      isDirty && currentLocation.pathname !== nextLocation.pathname,
-  );
-  useEffect(() => {
-    if (blocker.state !== "blocked") return;
+  // PER-69: in-SPA navigate-away warning. We can't use react-router's
+  // `useBlocker` here because the app is mounted via the legacy
+  // <BrowserRouter> (not a data router). Instead we expose a helper
+  // that the back/cancel buttons inside this page call before
+  // navigating away. The native close-tab/reload path is handled by
+  // the `beforeunload` listener below.
+  const guardNavigate = (to: string) => {
+    if (!isDirty) {
+      navigate(to);
+      return;
+    }
     Modal.confirm({
       title: "Несохранённые изменения",
       content: "Покинуть страницу? Все изменения будут потеряны.",
       okText: "Покинуть",
       okButtonProps: { danger: true },
       cancelText: "Остаться",
-      onOk: () => blocker.proceed(),
-      onCancel: () => blocker.reset(),
+      onOk: () => navigate(to),
     });
-  }, [blocker]);
+  };
 
   // PER-69: warn on close-tab / reload / native back
   useEffect(() => {
@@ -884,9 +888,12 @@ export function AdminScenarioEdit() {
         size="middle"
       >
         <Space>
-          <Link to="/admin/scenarios">
-            <Button icon={<ArrowLeftOutlined />}>К списку</Button>
-          </Link>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => guardNavigate("/admin/scenarios")}
+          >
+            К списку
+          </Button>
           <Typography.Title level={3} style={{ margin: 0 }}>
             {scenario?.title ?? "Загрузка…"}
           </Typography.Title>
