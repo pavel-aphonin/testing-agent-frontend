@@ -1,6 +1,6 @@
 import { CloseOutlined, SendOutlined } from "@ant-design/icons";
 import { useMutation } from "@tanstack/react-query";
-import { Avatar, Button, Drawer, Input, Space, Spin, Tag, Typography } from "antd";
+import { Avatar, Button, Drawer, Input, Space, Spin, Tag, Typography, theme } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -27,6 +27,7 @@ interface Props {
  * next" type prompts.
  */
 export function AssistantDrawer({ open, onClose }: Props) {
+  const { token } = theme.useToken();
   const location = useLocation();
   const [history, setHistory] = useState<AssistantMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -149,7 +150,7 @@ export function AssistantDrawer({ open, onClose }: Props) {
           flex: 1,
           overflowY: "auto",
           padding: 16,
-          background: "#fafafa",
+          background: token.colorFillQuaternary,
         }}
       >
         {history.length === 0 ? (

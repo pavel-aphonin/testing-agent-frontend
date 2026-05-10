@@ -11,6 +11,7 @@ import {
   Table,
   Tag,
   Typography,
+  theme,
 } from "antd";
 import { useMemo, useState } from "react";
 
@@ -90,6 +91,7 @@ function ScreenBody({
   screenshotPath: string | null;
   elements: ScreenElement[];
 }) {
+  const { token } = theme.useToken();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
 
@@ -126,7 +128,7 @@ function ScreenBody({
           src={screenshotSrc}
           alt={screenHash}
           width="100%"
-          style={{ maxHeight: 360, objectFit: "contain", background: "#fafafa", borderRadius: 4 }}
+          style={{ maxHeight: 360, objectFit: "contain", background: token.colorFillQuaternary, borderRadius: 4 }}
           preview
         />
       ) : (
@@ -134,8 +136,8 @@ function ScreenBody({
           style={{
             height: 200,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: "#fafafa", borderRadius: 4,
-            color: "#bfbfbf", fontSize: 13,
+            background: token.colorFillQuaternary, borderRadius: 4,
+            color: token.colorTextDisabled, fontSize: 13,
           }}
         >
           Скриншот не сохранён

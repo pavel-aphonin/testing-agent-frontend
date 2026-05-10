@@ -103,9 +103,10 @@ export function EventsTimeline({ events, language, autoScroll = true, emptyText 
 
   if (renderableEvents.length === 0) {
     return (
-      <div style={{ padding: 24, textAlign: "center", color: "#999" }}>
+      // PER-67: AntD secondary text token works in both themes
+      <Typography.Paragraph type="secondary" style={{ padding: 24, textAlign: "center", margin: 0 }}>
         {emptyText}
-      </div>
+      </Typography.Paragraph>
     );
   }
 

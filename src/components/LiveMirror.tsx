@@ -1,3 +1,4 @@
+import { theme } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -37,6 +38,7 @@ export function LiveMirror({
   intervalMs = 200,
   retryIntervalMs = 1500,
 }: Props) {
+  const { token } = theme.useToken();
   const { t } = useTranslation();
   const [src, setSrc] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(true);
@@ -103,7 +105,7 @@ export function LiveMirror({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#fff",
+        background: token.colorBgContainer,
         borderRadius: 4,
         padding: 8,
         minHeight: 480,
@@ -121,7 +123,7 @@ export function LiveMirror({
       ) : (
         <div
           style={{
-            color: "#888",
+            color: token.colorTextSecondary,
             fontSize: 13,
             display: "flex",
             flexDirection: "column",
@@ -131,7 +133,7 @@ export function LiveMirror({
         >
           <div>{t("runProgress.wsConnecting")}</div>
           {waiting && (
-            <div style={{ fontSize: 11, color: "#666" }}>
+            <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
               {t("liveMirror.waiting")}
             </div>
           )}

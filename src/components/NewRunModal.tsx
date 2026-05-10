@@ -298,9 +298,9 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
           }
           style={{ marginBottom: useScenarios ? 8 : 16 }}
         >
-          <span style={{ color: "#999", fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Агент выполнит выбранные сценарии, затем продолжит свободное исследование
-          </span>
+          </Typography.Text>
         </Form.Item>
 
         {useScenarios && (
@@ -341,11 +341,11 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
           }
           style={{ marginBottom: 16 }}
         >
-          <span style={{ color: "#999", fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {pbtEnabled
               ? "Каждое поле формы будет протестировано на 4-8 вариантах данных"
               : "Агент использует только один валидный набор данных"}
-          </span>
+          </Typography.Text>
         </Form.Item>
 
         {/* ---------- Advanced settings ---------- */}
