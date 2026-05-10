@@ -53,6 +53,7 @@ import { listKnowledgeDocuments } from "@/api/knowledge";
 import { listTestData } from "@/api/testData";
 import { VarAutocompleteInput } from "@/components/VarAutocompleteInput";
 import { JsonScenarioEditor } from "@/components/JsonScenarioEditor";
+import { useThemeStore } from "@/store/theme";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { ScenarioCreate, ScenarioRead } from "@/types";
 
@@ -337,6 +338,7 @@ function FlowchartEditor({
 }) {
   const tdataVars = useContext(VarsCtx);
   const { token } = theme.useToken();
+  const themeMode = useThemeStore((s) => s.resolved);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm] = Form.useForm();
 
@@ -457,12 +459,24 @@ function FlowchartEditor({
           fitView
           fitViewOptions={{ padding: 0.3 }}
           proOptions={{ hideAttribution: true }}
+          colorMode={themeMode}
         >
           <Background />
           {/* PER-73: full controls (zoom/fit/lock) + minimap so users
               don't lose orientation in long scenarios. */}
           <Controls />
-          <MiniMap pannable zoomable />
+          <MiniMap
+            pannable
+            zoomable
+            maskColor={
+              themeMode === "dark" ? "rgba(0, 0, 0, 0.6)" : "rgba(240, 240, 240, 0.6)"
+            }
+            nodeColor={() => token.colorPrimary}
+            style={{
+              background: token.colorBgElevated,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          />
         </ReactFlow>
 
         <Button
