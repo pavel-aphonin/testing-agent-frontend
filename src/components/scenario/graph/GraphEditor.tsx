@@ -226,6 +226,22 @@ function GraphEditorInner({
   // Mode for the help drawer (step 6).
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Diagnostic state — visible only when the URL has ``?debug=1``.
+  // Shows a small status bar in the corner of the canvas that
+  // reports whether React Flow's connection lifecycle is firing.
+  // This is the fastest way to tell if a "I can't drag" report is
+  // about RF not receiving events vs. our handler logic.
+  const debugEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
+  const [debug, setDebug] = useState({
+    starts: 0,
+    ends: 0,
+    lastStartNode: "" as string | null | "",
+    lastEndValid: null as boolean | null,
+    lastEndToNode: null as unknown,
+  });
+
   // React Flow expects its own Node/Edge shape. We keep our v2 model
   // as the source of truth and translate on each render — cheap, and
   // saves us from writing diff-detection code.
@@ -539,6 +555,11 @@ function GraphEditorInner({
     } else {
       connectStartRef.current = null;
     }
+    setDebug((d) => ({
+      ...d,
+      starts: d.starts + 1,
+      lastStartNode: params.nodeId,
+    }));
   }, []);
 
   // Canonical "Add node on edge drop" pattern from
@@ -552,6 +573,13 @@ function GraphEditorInner({
     (event, connectionState) => {
       const start = connectStartRef.current;
       connectStartRef.current = null;
+      setDebug((d) => ({
+        ...d,
+        ends: d.ends + 1,
+        lastEndValid: connectionState ? connectionState.isValid : null,
+        lastEndToNode:
+          (connectionState as { toNode?: unknown } | undefined)?.toNode ?? null,
+      }));
       if (!start || !connectionState) return;
       if (connectionState.isValid) return; // edge already created by RF
 
@@ -860,6 +888,37 @@ function GraphEditorInner({
             />
           )}
         </ReactFlow>
+
+        {debugEnabled && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 50,
+              background: "rgba(0,0,0,0.75)",
+              color: "#fff",
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 11,
+              lineHeight: 1.4,
+              padding: "6px 10px",
+              borderRadius: 6,
+              pointerEvents: "none",
+              maxWidth: 280,
+            }}
+          >
+            <div>
+              <b>RF debug</b> — drag handle, watch counts:
+            </div>
+            <div>onConnectStart: {debug.starts}</div>
+            <div>
+              onConnectEnd: {debug.ends} ·{" "}
+              isValid={String(debug.lastEndValid)} ·{" "}
+              toNode={debug.lastEndToNode ? "node" : "null"}
+            </div>
+            <div>lastStart node: {debug.lastStartNode || "—"}</div>
+          </div>
+        )}
 
         {/* Empty-canvas CTA. The user has to add SOMETHING before
             they can drag-to-create, so we offer one obvious entry
