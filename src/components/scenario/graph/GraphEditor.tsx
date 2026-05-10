@@ -155,6 +155,28 @@ function GraphEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
+  // ── Add a fresh node at the canvas centre ──────────────────────
+  // The vanilla "drag from an existing node" pattern is the main
+  // way to grow the graph, but there has to be something to drag
+  // FROM. New scenarios start empty, so we expose one button that
+  // drops a node at the centre of the visible canvas. Selecting
+  // the new node immediately opens the drawer so the user can
+  // change its type and fill fields.
+  const addNodeAtCenter = useCallback(() => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    const position = screenToFlowPosition({ x: cx, y: cy });
+    const id = newNodeId("n");
+    const newNode: Node = {
+      id,
+      position,
+      data: { label: "Новый шаг", _category: DEFAULT_CATEGORY },
+    };
+    setNodes((nds) => nds.concat(newNode));
+    setSelectedNodeId(id);
+  }, [screenToFlowPosition, setNodes]);
+
   // ── Vanilla "Add Node on Edge Drop" handlers ───────────────────
   const onConnect: OnConnect = useCallback(
     (params) => {
@@ -242,7 +264,46 @@ function GraphEditorInner({
 
   return (
     <>
-      <div ref={wrapperRef} style={{ width: "100%", height }}>
+      {/* Minimal toolbar — just the "add node" button + a hint
+          reminding the user about drag-from-handle. */}
+      <Space style={{ marginBottom: 8 }}>
+        <Button onClick={addNodeAtCenter}>+ Добавить узел</Button>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Или потяните мышью от точки на любом узле — там, где
+          отпустите, появится следующий узел.
+        </Typography.Text>
+      </Space>
+
+      <div ref={wrapperRef} style={{ width: "100%", height, position: "relative" }}>
+        {nodes.length === 0 && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 5,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                pointerEvents: "auto",
+                padding: 24,
+                borderRadius: 12,
+                border: "1px dashed currentColor",
+                textAlign: "center",
+                opacity: 0.85,
+              }}
+            >
+              <div style={{ marginBottom: 12 }}>Холст пуст</div>
+              <Button type="primary" onClick={addNodeAtCenter}>
+                Добавить первый узел
+              </Button>
+            </div>
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
