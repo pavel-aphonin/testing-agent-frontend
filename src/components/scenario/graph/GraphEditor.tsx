@@ -35,6 +35,7 @@ import {
 } from "@ant-design/icons";
 import {
   Background,
+  ConnectionMode,
   Controls,
   MiniMap,
   ReactFlow,
@@ -553,7 +554,11 @@ function GraphEditorInner({
   const handleConnectStart = useCallback<
     NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectStart"]>
   >((_event, params) => {
-    if (params.handleType === "source" && params.nodeId) {
+    // PER-86 followup: with ``connectionMode="loose"`` users can grab
+    // any handle (source OR target) and drag from it. We capture the
+    // node id regardless of handleType so the drag-into-empty-pane
+    // flow can wire an outgoing edge from this node.
+    if (params.nodeId) {
       connectStartRef.current = {
         nodeId: params.nodeId,
         handleId: params.handleId ?? null,
@@ -861,6 +866,12 @@ function GraphEditorInner({
           proOptions={{ hideAttribution: true }}
           colorMode={themeMode}
           deleteKeyCode={null} /* handled manually so we can preserve start/end */
+          // PER-88 followup: each node has handles on all four sides.
+          // Loose mode lets a single ``type="source"`` handle act as
+          // a connection target too — so the user can drag an arrow
+          // IN or OUT from any side without us having to render
+          // overlapping source+target dots per side.
+          connectionMode={ConnectionMode.Loose}
         >
           <Background />
           <Controls />

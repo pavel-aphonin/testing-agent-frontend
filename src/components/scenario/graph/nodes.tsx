@@ -54,6 +54,23 @@ const HANDLE_STYLE = {
   cursor: "crosshair",
 };
 
+/** Four handles, one per side of the node. ReactFlow's
+ *  ``connectionMode="loose"`` (set on the GraphEditor's <ReactFlow>)
+ *  lets each ``type="source"`` handle also act as a connection target,
+ *  so the user can drag an arrow IN or OUT from any side regardless
+ *  of which end they grabbed first. Unique ids per side keep edge
+ *  serialisation stable. */
+function FourSidedHandles({ kind = "source" }: { kind?: "source" | "target" }) {
+  return (
+    <>
+      <Handle id="t" type={kind} position={Position.Top} style={HANDLE_STYLE} />
+      <Handle id="r" type={kind} position={Position.Right} style={HANDLE_STYLE} />
+      <Handle id="b" type={kind} position={Position.Bottom} style={HANDLE_STYLE} />
+      <Handle id="l" type={kind} position={Position.Left} style={HANDLE_STYLE} />
+    </>
+  );
+}
+
 // ─────────────────────────────────────── Start / End
 
 // Start and End render as proper BPMN circles (not pills) — single
@@ -82,7 +99,8 @@ export function StartNode() {
       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
         Начало
       </span>
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+      {/* Source handles on every side — start emits, never receives. */}
+      <FourSidedHandles kind="source" />
     </div>
   );
 }
@@ -110,7 +128,8 @@ export function EndNode() {
       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
         Конец
       </span>
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      {/* Target handles on every side — end receives, never emits. */}
+      <FourSidedHandles kind="target" />
     </div>
   );
 }
@@ -138,7 +157,7 @@ export function ActionNode({ data }: NodeProps) {
         gap: 4,
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <FourSidedHandles kind="source" />
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontSize: 16 }}>{glyph}</span>
         <Tag color="processing" style={{ margin: 0, fontSize: 11 }}>
@@ -158,7 +177,6 @@ export function ActionNode({ data }: NodeProps) {
           📍 {d.screen_description}
         </Typography.Text>
       )}
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
 }
@@ -181,7 +199,11 @@ export function DecisionNode({ data }: NodeProps) {
         justifyContent: "center",
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      {/* Top + bottom handles for general drag-anywhere flow.
+          ``connectionMode="loose"`` lets them act as either end of
+          a connection. */}
+      <Handle id="t" type="source" position={Position.Top} style={HANDLE_STYLE} />
+      <Handle id="b" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
       <div
         style={{
           width: 96,
@@ -249,12 +271,11 @@ export function WaitNode({ data }: NodeProps) {
         gap: 6,
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <FourSidedHandles kind="source" />
       <ClockCircleOutlined style={{ color: token.colorInfo }} />
       <Typography.Text strong style={{ fontSize: 13 }}>
         Ждать {d.ms ?? 1000} мс
       </Typography.Text>
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
 }
@@ -283,7 +304,7 @@ export function ScreenCheckNode({ data }: NodeProps) {
         gap: 4,
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <FourSidedHandles kind="source" />
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <EyeOutlined style={{ color: token.colorPrimary }} />
         <Typography.Text strong style={{ fontSize: 12 }}>
@@ -293,7 +314,6 @@ export function ScreenCheckNode({ data }: NodeProps) {
       <Typography.Text type="secondary" style={{ fontSize: 11, textAlign: "center" }}>
         {d.screen_description || <em>(описание не задано)</em>}
       </Typography.Text>
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
 }
@@ -318,12 +338,11 @@ export function LoopBackNode({ data }: NodeProps) {
         gap: 6,
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <FourSidedHandles kind="source" />
       <ArrowLeftOutlined style={{ color: token.colorWarning }} />
       <Typography.Text strong style={{ fontSize: 12 }}>
         Повтор × {d.max_iterations ?? 10}
       </Typography.Text>
-      <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
     </div>
   );
 }
@@ -350,7 +369,7 @@ export function SubScenarioNode({ data }: NodeProps) {
         gap: 4,
       }}
     >
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <FourSidedHandles kind="source" />
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <LinkOutlined style={{ color: token.colorInfo }} />
         <Typography.Text strong style={{ fontSize: 12 }}>
@@ -362,7 +381,6 @@ export function SubScenarioNode({ data }: NodeProps) {
           <em style={{ opacity: 0.6 }}>(не выбран)</em>
         )}
       </Typography.Text>
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
 }
