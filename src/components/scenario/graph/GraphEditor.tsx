@@ -27,6 +27,7 @@
 import {
   addEdge,
   Background,
+  ConnectionMode,
   Controls,
   Handle,
   MiniMap,
@@ -506,6 +507,15 @@ function GraphEditorInner({
           fitViewOptions={{ padding: 2 }}
           nodeOrigin={[0.5, 0]}
           nodeTypes={SCENARIO_NODE_TYPES}
+          // Bisect step 5: any handle can initiate a connection,
+          // not just source handles. Lets the user grab the top
+          // handle of a card and drag a connection upward without
+          // RF refusing the gesture because top is typed
+          // ``target``. The vanilla "Add Node on Edge Drop" pattern
+          // continues to work because connectionState.isValid
+          // still reflects whether the drop landed on a compatible
+          // node.
+          connectionMode={ConnectionMode.Loose}
         >
           <Background />
           <Controls />
