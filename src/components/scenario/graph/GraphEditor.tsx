@@ -546,24 +546,43 @@ function GraphEditorInner({
     }
   }, []);
 
-  const handleConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent) => {
+  const handleConnectEnd = useCallback<
+    NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectEnd"]>
+  >(
+    (event, connectionState) => {
       const start = connectStartRef.current;
       connectStartRef.current = null;
       if (!start) return;
-      // If the drop hit a real handle, onConnect already created the
-      // edge. We're here to handle the "dropped into nothing" case —
-      // the target's class will be the React Flow pane.
-      const target = event.target as HTMLElement | null;
-      const droppedOnPane = !!target?.classList?.contains("react-flow__pane");
-      if (!droppedOnPane) return;
+      // React Flow v12 hands us the final connection state — if the
+      // drop landed on a real target handle, ``isValid`` is true and
+      // ``onConnect`` already created the edge. We only handle the
+      // dropped-in-empty-space case (``isValid`` false / ``toNode``
+      // null) — that's when we open the shape picker so the user
+      // can pick what kind of node should appear here.
+      if (connectionState && connectionState.isValid) return;
+      // ``toNode`` is null when the gesture didn't land on any node.
+      // We accept either signal so future RF versions that change
+      // the contract don't break us silently.
+      const toNode =
+        (connectionState as { toNode?: unknown } | undefined)?.toNode;
+      if (toNode) return;
 
       const point =
-        "touches" in event && event.touches.length > 0
-          ? { x: event.touches[0].clientX, y: event.touches[0].clientY }
-          : "changedTouches" in event && event.changedTouches.length > 0
-          ? { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY }
-          : { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
+        "touches" in event && (event as TouchEvent).touches.length > 0
+          ? {
+              x: (event as TouchEvent).touches[0].clientX,
+              y: (event as TouchEvent).touches[0].clientY,
+            }
+          : "changedTouches" in event &&
+            (event as TouchEvent).changedTouches.length > 0
+          ? {
+              x: (event as TouchEvent).changedTouches[0].clientX,
+              y: (event as TouchEvent).changedTouches[0].clientY,
+            }
+          : {
+              x: (event as MouseEvent).clientX,
+              y: (event as MouseEvent).clientY,
+            };
       const flow = rfApi.screenToFlowPosition(point);
       setPicker({
         screenX: point.x,
