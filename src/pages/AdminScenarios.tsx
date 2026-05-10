@@ -828,9 +828,15 @@ export function AdminScenarioEdit() {
             />
           </Form.Item>
         ) : editorMode === "flowchart" ? (
-          <Form.Item
-            label={`Блок-схема (${graph.nodes.filter((n) => n.type === "action").length} действий)`}
-          >
+          // GraphEditor pulled OUT of <Form.Item>. AntD's Form
+          // wrappers add several layers of divs + CSS that have
+          // historically caused pointer-event quirks with React
+          // Flow inside them. Rendering it as a sibling label +
+          // editor pair gives the canvas a clean root.
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>
+              {`Блок-схема (${graph.nodes.filter((n) => n.type === "action").length} действий)`}
+            </div>
             <GraphEditor
               value={graph}
               onChange={handleGraphChange}
@@ -843,7 +849,7 @@ export function AdminScenarioEdit() {
               workspaceId={workspace?.id ?? null}
               height={640}
             />
-          </Form.Item>
+          </div>
         ) : (
           // Constructor tab is a flat list of action steps. Disabled
           // when the graph has branching/loops because serialising
