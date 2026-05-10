@@ -1,149 +1,103 @@
 /**
- * Visual scenario graph editor.
+ * Scenario graph editor — built on React Flow's stock primitives,
+ * no visual customisations.
  *
- * Miro-/Lucidchart-style canvas:
- *  - Empty canvas starts with a centred "add the first node" CTA.
- *  - Drag from a node's handle into empty space → a floating shape
- *    picker pops up at the drop location → choosing a shape creates
- *    that node + the connecting edge in one gesture.
- *  - Drag from a handle directly onto another node's handle → just
- *    the edge is added (standard React Flow behaviour).
- *  - Click a node or edge → right-side editor drawer.
- *  - Selected non-start/end node + Delete/Backspace → removes node
- *    plus incident edges.
+ * What's in here:
+ *   * The vanilla "Add Node on Edge Drop" pattern from RF's docs
+ *     (drag from a node's handle, release in empty space → a new
+ *     node + a connecting edge appear).
+ *   * A two-way bridge to our v2 scenario graph format: ``value``
+ *     coming in is converted to RF nodes/edges, every change goes
+ *     back through ``onChange`` as a fresh v2 graph.
+ *   * Click on a node → drawer where the user picks the node's
+ *     semantic type (action / decision / wait / screen check /
+ *     sub-scenario / start / end) and edits its fields.
+ *   * Click on an edge → drawer with the edge condition / label.
  *
- * The component is fully controlled: parent passes the v2 graph in
- * `value` and receives a fresh graph in `onChange`. Position changes
- * (drag inside canvas) flow through the same onChange so the parent's
- * dirty-flag tracks layout edits too.
+ * What's NOT in here on purpose:
+ *   * No custom shape components — every node renders as RF's
+ *     default rectangle. Semantic type lives in ``data._category``,
+ *     not in geometry.
+ *   * No CSS overrides on handles or edges.
+ *   * No floating shape picker, no sidebar palette. The vanilla
+ *     drag-to-create flow is enough; richer pickers can come back
+ *     later once the baseline is rock solid.
  */
 
 import {
-  ApartmentOutlined,
-  BlockOutlined,
-  ClusterOutlined,
-  DeleteOutlined,
-  PlayCircleOutlined,
-  QuestionCircleOutlined,
-} from "@ant-design/icons";
-import {
+  addEdge,
   Background,
-  ConnectionMode,
   Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
+  useEdgesState,
+  useNodesState,
   useReactFlow,
-  type Connection,
   type Edge,
   type Node,
-  type NodeChange,
-  type EdgeChange,
+  type OnConnect,
+  type OnConnectEnd,
+  type OnConnectStart,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Alert,
-  AutoComplete,
   Button,
   Drawer,
-  Empty,
   Form,
   Input,
   InputNumber,
   Select,
   Space,
   Switch,
-  Tooltip,
   Typography,
-  theme,
 } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useThemeStore } from "@/store/theme";
-
+import { listScenarioShapes } from "@/api/scenarioShapes";
 import { useQuery } from "@tanstack/react-query";
 
-import { listScenarioShapes } from "@/api/scenarioShapes";
-import type { ScenarioShapeRead } from "@/types";
-
-import { autoLayout } from "./autoLayout";
-import { SCENARIO_NODE_TYPES, getIconNode } from "./nodes";
 import {
+  ACTION_VERBS,
   newNodeId,
-  type ActionNodeData,
   type GraphEdge,
   type GraphNode,
   type GraphNodeType,
   type ScenarioGraphV2,
 } from "./types";
-import { useScenarioDictionaries, type DictItem } from "./useScenarioDictionaries";
-import { validateGraph, type ValidationIssue } from "./validate";
 
 // ──────────────────────────────────────────────────────────────────────
 
 interface Props {
   value: ScenarioGraphV2;
   onChange: (next: ScenarioGraphV2) => void;
-  /** Variables available for {{test_data.X}} autocomplete in input/value
-   *  fields. Optional — when omitted, plain Input is used. */
   variables?: { key: string; value?: string }[];
-  /** All other scenarios in the workspace (for sub_scenario links).
-   *  When undefined, sub_scenario nodes are still creatable but the
-   *  link picker shows an empty list. */
   allScenarios?: { id: string; title: string }[];
-  /** Id of the scenario currently being edited — excluded from the
-   *  sub_scenario picker so it can't reference itself. */
   currentScenarioId?: string;
-  /** Active workspace id — used to look up custom dictionaries that
-   *  feed the action / element pickers. When omitted the editor falls
-   *  back to its hardcoded option set. */
   workspaceId?: string | null;
   height?: number;
 }
 
-/** Picker / palette item — derived from the scenario_shapes
- *  dictionary at runtime. The category is used as React Flow's
- *  ``node.type`` so the runtime renderer dispatches to the right
- *  geometry component, and ``code`` is stored in ``data.shape_code``
- *  for backend resolution. */
-interface ShapeItem {
-  code: string;
-  category: string;
-  label: string;
-  hint: string;
-  icon: React.ReactNode;
-}
+// Internal category attached to each RF node's data so we know what
+// semantic type the worker should treat it as. Default category for
+// freshly-dropped nodes is "action" — that's the most common case
+// and the drawer lets the user change it immediately.
+const DEFAULT_CATEGORY: GraphNodeType = "action";
 
-/** Build the default ``data`` payload for a freshly-added node from
- *  the shape's attribute schema — every attribute with a ``default``
- *  becomes a starting value, the rest stay unset. The action verb
- *  is also seeded from ``shape.action_code`` so the worker has
- *  something to dispatch on if the user saves without editing. */
-function defaultDataForShape(
-  shape: ScenarioShapeRead | undefined,
-): Record<string, unknown> {
-  if (!shape) return {};
-  const data: Record<string, unknown> = { shape_code: shape.code };
-  for (const attr of shape.attributes ?? []) {
-    if (attr.default !== undefined && attr.default !== null) {
-      data[attr.key] = attr.default;
-    }
-  }
-  if (shape.category === "action" && shape.action_code && !data.action) {
-    data.action = shape.action_code;
-  }
-  return data;
-}
+const CATEGORY_OPTIONS = [
+  { value: "start", label: "Начало" },
+  { value: "end", label: "Конец" },
+  { value: "action", label: "Действие" },
+  { value: "decision", label: "Условие" },
+  { value: "wait", label: "Пауза" },
+  { value: "screen_check", label: "Проверка экрана" },
+  { value: "sub_scenario", label: "Связанный сценарий" },
+  { value: "loop_back", label: "Возврат" },
+  { value: "group", label: "Группа" },
+];
 
 // ──────────────────────────────────────────────────────────────────────
 
-// Outer wrapper exposes a ReactFlowProvider so the inner component can
-// call ``useReactFlow`` for screen↔flow coordinate conversion. Without
-// this wrapper the hook throws — the React Flow context is only set
-// up inside <ReactFlowProvider> or below a <ReactFlow> render.
 export function GraphEditor(props: Props) {
   return (
     <ReactFlowProvider>
@@ -158,1404 +112,399 @@ function GraphEditorInner({
   variables,
   allScenarios,
   currentScenarioId,
-  workspaceId,
-  height = 600,
+  height = 640,
 }: Props) {
-  const { token } = theme.useToken();
-  const themeMode = useThemeStore((s) => s.resolved);
-  const rfApi = useReactFlow();
-  // Workspace dictionaries — when available, the action node form
-  // uses these instead of hardcoded options so admins can extend
-  // the picker without a code change.
-  const dicts = useScenarioDictionaries(workspaceId ?? null);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const connectingNodeId = useRef<string | null>(null);
+  const { screenToFlowPosition } = useReactFlow();
 
-  // PER-90: shape palette comes from the scenario_shapes dictionary,
-  // not a hardcoded array. Built-ins are seeded by the backend so
-  // this list is never empty in practice.
-  const shapesQ = useQuery({
-    queryKey: ["scenario-shapes"],
-    queryFn: listScenarioShapes,
-    staleTime: 5 * 60_000,
-  });
-  const shapes = shapesQ.data ?? [];
-  const shapeByCode = useMemo(() => {
-    const m = new Map<string, ScenarioShapeRead>();
-    for (const s of shapes) m.set(s.code, s);
-    return m;
-  }, [shapes]);
-  const shapeItems: ShapeItem[] = useMemo(
-    () =>
-      shapes
-        .slice()
-        .sort(
-          (a, b) =>
-            a.sort_order - b.sort_order || a.name.localeCompare(b.name),
-        )
-        .map((s) => ({
-          code: s.code,
-          category: s.category,
-          label: s.name,
-          hint: s.description ?? "",
-          icon: getIconNode(s.icon),
-        })),
-    [shapes],
-  );
+  // ── v2 graph → RF state ────────────────────────────────────────
+  const initial = useMemo(() => v2ToRf(value), [value]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initial.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges);
 
-  // Tracks the source of an in-progress drag from a handle.
-  const connectStartRef = useRef<{
-    nodeId: string;
-    handleId?: string | null;
-  } | null>(null);
+  // Re-hydrate when the parent loads a new scenario (e.g. switching
+  // between scenarios in the same edit session).
+  const lastSeenValueRef = useRef(value);
+  useEffect(() => {
+    if (lastSeenValueRef.current === value) return;
+    lastSeenValueRef.current = value;
+    const next = v2ToRf(value);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [value, setNodes, setEdges]);
 
-  // Floating shape picker. ``screenX/Y`` are viewport coords for the
-  // popup placement; ``flowX/Y`` are graph coords for the new node.
-  // ``sourceId`` is set when invoked from a drag-from-handle drop;
-  // null when invoked from the empty-canvas CTA (first node).
-  const [picker, setPicker] = useState<
-    | {
-        screenX: number;
-        screenY: number;
-        flowX: number;
-        flowY: number;
-        sourceId: string | null;
-        sourceHandle: string | null;
-      }
-    | null
-  >(null);
-  // Mode for the help drawer (step 6).
-  const [helpOpen, setHelpOpen] = useState(false);
-
-  // Diagnostic state — visible only when the URL has ``?debug=1``.
-  // Shows a small status bar in the corner of the canvas that
-  // reports whether React Flow's connection lifecycle is firing.
-  // This is the fastest way to tell if a "I can't drag" report is
-  // about RF not receiving events vs. our handler logic.
-  const debugEnabled =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("debug") === "1";
-  const [debug, setDebug] = useState({
-    starts: 0,
-    ends: 0,
-    lastStartNode: "" as string | null | "",
-    lastEndValid: null as boolean | null,
-    lastEndToNode: null as unknown,
-  });
-
-  // React Flow expects its own Node/Edge shape. We keep our v2 model
-  // as the source of truth and translate on each render — cheap, and
-  // saves us from writing diff-detection code.
-  const rfNodes: Node[] = useMemo(
-    () =>
-      value.nodes.map((n) => {
-        const rfNode: Node = {
-          id: n.id,
-          type: n.type,
-          position: n.position,
-          data: n.data as Record<string, unknown>,
-          // start + end are not deletable to keep the graph well-formed.
-          deletable: n.type !== "start" && n.type !== "end",
-        };
-        if (n.parentId) {
-          // PER-86 followup: ``parentId`` makes React Flow render this
-          // node inside the named group's bounds. ``extent: "parent"``
-          // confines drag movements to the group.
-          rfNode.parentId = n.parentId;
-          rfNode.extent = "parent";
-        }
-        if (n.type === "group") {
-          // Group nodes need an explicit width/height for React Flow
-          // to size the container. ``selectable`` so the user can
-          // open the editor; ``draggable`` for repositioning the
-          // whole group at once.
-          rfNode.style = {
-            width: n.width ?? 320,
-            height: n.height ?? 200,
-          };
-          rfNode.zIndex = -1; // children sit on top
-        }
-        return rfNode;
-      }),
-    [value.nodes],
-  );
-
-  // PER-84: synchronous validation pass. Memoised so we don't re-walk
-  // the graph on every pointer move. Surfaced via the banner above
-  // the canvas; we no longer overlay per-node highlights.
-  const issues: ValidationIssue[] = useMemo(() => validateGraph(value), [value]);
-  const errors = issues.filter((i) => i.severity === "error");
-  const warnings = issues.filter((i) => i.severity === "warning");
-
-  // Validation surfaces only through the banner above the canvas
-  // now — no per-node halo / outline. Earlier attempts (CSS outline,
-  // box-shadow, filter drop-shadow) all introduced visual noise or
-  // confused users about where the node's clickable area ended.
-  // The banner lists offending nodes by name, which is enough.
-  const decoratedRfNodes: Node[] = rfNodes;
-  const rfEdges: Edge[] = useMemo(
-    () =>
-      value.edges.map((e) => {
-        // Edge labels still surface the condition expression / user
-        // label — that's part of our scenario semantics, not visual
-        // chrome. Everything else uses React Flow defaults.
-        const explicit = e.data?.label;
-        const cond = (e.data?.condition ?? "").toString().trim();
-        const display = explicit || (cond ? cond : undefined);
-        return {
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          label: display,
-        };
-      }),
-    [value.edges],
-  );
-
-  // Selected node — drives the right-side editor drawer.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = useMemo(
-    () => (selectedId ? value.nodes.find((n) => n.id === selectedId) ?? null : null),
-    [selectedId, value.nodes],
-  );
-
-  // PER-83: selected edge — separate state so the user can edit edge
-  // condition/label without dismissing the node drawer first.
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const selectedEdge = useMemo(
-    () =>
-      selectedEdgeId
-        ? value.edges.find((e) => e.id === selectedEdgeId) ?? null
-        : null,
-    [selectedEdgeId, value.edges],
-  );
-
-  const updateEdgeData = (patch: Record<string, unknown>) => {
-    if (!selectedEdge) return;
-    onChange({
-      ...value,
-      edges: value.edges.map((e) =>
-        e.id === selectedEdge.id
-          ? { ...e, data: { ...(e.data ?? {}), ...patch } }
-          : e,
-      ),
-    });
-  };
-
-  // Apply React Flow's incremental changes back into the v2 model.
-  const handleNodesChange = useCallback(
-    (changes: NodeChange[]) => {
-      const next = applyNodeChanges(changes, rfNodes);
-      // PER-86 followup: react-flow doesn't bubble parentId changes
-      // through NodeChange; we do the parent-detection ourselves on
-      // every drag-stop. A node sitting fully inside a group's bbox
-      // becomes a child of that group; a node dragged outside its
-      // current group bbox becomes top-level again.
-      const groupRects = next
-        .filter((n) => n.type === "group")
-        .map((g) => {
-          const style = (g as Node & { style?: { width?: number; height?: number } }).style;
-          const w = (style?.width as number | undefined) ?? 320;
-          const h = (style?.height as number | undefined) ?? 200;
-          return {
-            id: g.id,
-            x: g.position?.x ?? 0,
-            y: g.position?.y ?? 0,
-            w,
-            h,
-          };
-        });
-      const inside = (
-        nx: number,
-        ny: number,
-        rect: (typeof groupRects)[number],
-      ): boolean =>
-        nx >= rect.x &&
-        nx <= rect.x + rect.w &&
-        ny >= rect.y &&
-        ny <= rect.y + rect.h;
-
-      onChange({
-        ...value,
-        nodes: next.map<GraphNode>((n) => {
-          const original = value.nodes.find((x) => x.id === n.id);
-          // For non-group nodes look at where they are relative to
-          // every existing group. Smallest enclosing group wins.
-          // ``parentId`` carries through React Flow as-is once set,
-          // but we still want to recompute it to allow drag-out.
-          let parentId: string | null = null;
-          if (n.type !== "group") {
-            // React Flow positions of children with parentId are
-            // RELATIVE to the parent. We need absolute positions for
-            // the inside-test, so add the parent offset back.
-            const rfParentId =
-              (n as Node & { parentId?: string }).parentId ?? null;
-            const parentRect = rfParentId
-              ? groupRects.find((g) => g.id === rfParentId)
-              : null;
-            const absX = (n.position?.x ?? 0) + (parentRect?.x ?? 0);
-            const absY = (n.position?.y ?? 0) + (parentRect?.y ?? 0);
-            for (const g of groupRects) {
-              if (inside(absX, absY, g)) {
-                parentId = g.id;
-                break;
-              }
-            }
-          }
-          const out: GraphNode = {
-            id: n.id,
-            type: (n.type ?? original?.type ?? "action") as GraphNodeType,
-            position: n.position ?? original?.position ?? { x: 0, y: 0 },
-            data: (n.data ?? original?.data ?? {}) as Record<string, unknown>,
-          };
-          if (parentId) out.parentId = parentId;
-          if (original?.width) out.width = original.width;
-          if (original?.height) out.height = original.height;
-          return out;
-        }),
-        // Drop edges that lost an endpoint (React Flow doesn't auto-prune
-        // on node removal in v12).
-        edges: value.edges.filter((e) => {
-          const removed = changes.some(
-            (c) => c.type === "remove" && (c.id === e.source || c.id === e.target),
-          );
-          return !removed;
-        }),
-      });
-    },
-    [rfNodes, value, onChange],
-  );
-
-  const handleEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      const next = applyEdgeChanges(changes, rfEdges);
-      onChange({
-        ...value,
-        edges: next.map<GraphEdge>((e) => {
-          const original = value.edges.find((x) => x.id === e.id);
-          return {
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            data: original?.data ?? {},
-          };
-        }),
-      });
-    },
-    [rfEdges, value, onChange],
-  );
-
-  // Drag-to-connect: parent decides whether the connection is allowed.
-  // For now we accept anything except a self-loop on a non-loop_back
-  // node (full validation lives in PER-84).
-  const handleConnect = useCallback(
-    (conn: Connection) => {
-      if (!conn.source || !conn.target) return;
-      if (conn.source === conn.target) {
-        const node = value.nodes.find((n) => n.id === conn.source);
-        if (node?.type !== "loop_back") return; // refuse trivial self-loop
-      }
-      const newEdge: GraphEdge = {
-        id: `e_${conn.source}_${conn.target}_${Math.random().toString(36).slice(2, 6)}`,
-        source: conn.source,
-        target: conn.target,
-        data: {},
-      };
-      onChange({
-        ...value,
-        edges: addEdge(
-          {
-            id: newEdge.id,
-            source: newEdge.source,
-            target: newEdge.target,
-            data: newEdge.data,
-          },
-          rfEdges,
-        ).map<GraphEdge>((e) => {
-          const matched =
-            e.id === newEdge.id
-              ? newEdge
-              : value.edges.find((x) => x.id === e.id);
-          return matched ?? {
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            data: {},
-          };
-        }),
-      });
-    },
-    [value, onChange, rfEdges],
-  );
-
-  // ────────────────────────── Drag-to-create handlers
-  // React Flow's connect lifecycle:
-  //   * onConnectStart fires when the user grabs a handle. We capture
-  //     the source so we can use it later if the drop misses any
-  //     real target.
-  //   * onConnectEnd fires once at the end of the gesture, regardless
-  //     of where the cursor went. If the drop landed on another
-  //     handle, ``onConnect`` already handled the wiring; we detect
-  //     "fell into empty pane" by inspecting the event target.
-
-  const handleConnectStart = useCallback<
-    NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectStart"]>
-  >((_event, params) => {
-    if (params.nodeId) {
-      connectStartRef.current = {
-        nodeId: params.nodeId,
-        handleId: params.handleId ?? null,
-      };
-    } else {
-      connectStartRef.current = null;
+  // Push every RF change back up as a fresh v2 graph. We skip the
+  // very first emit (when nodes/edges equal the initial snapshot)
+  // so the parent's dirty-flag doesn't trip on mount.
+  const isFirstEmitRef = useRef(true);
+  useEffect(() => {
+    if (isFirstEmitRef.current) {
+      isFirstEmitRef.current = false;
+      return;
     }
-    setDebug((d) => ({
-      ...d,
-      starts: d.starts + 1,
-      lastStartNode: params.nodeId,
-    }));
+    const next = rfToV2(nodes, edges, value.version);
+    onChange(next);
+    // ``onChange`` intentionally excluded — parents typically wrap it
+    // in useCallback but we don't want a re-emit just because the
+    // identity changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
+  // ── Selection + drawers ────────────────────────────────────────
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
+  // ── Vanilla "Add Node on Edge Drop" handlers ───────────────────
+  const onConnect: OnConnect = useCallback(
+    (params) => {
+      connectingNodeId.current = null;
+      setEdges((eds) => addEdge(params, eds));
+    },
+    [setEdges],
+  );
+
+  const onConnectStart: OnConnectStart = useCallback((_event, { nodeId }) => {
+    connectingNodeId.current = nodeId;
   }, []);
 
-  // Canonical "Add node on edge drop" pattern from
-  //   https://reactflow.dev/examples/nodes/add-node-on-edge-drop
-  // RF tells us whether the connection was completed onto a valid
-  // target via ``connectionState.isValid``. If not, the drop hit
-  // empty space — we open the shape picker there.
-  const handleConnectEnd = useCallback<
-    NonNullable<React.ComponentProps<typeof ReactFlow>["onConnectEnd"]>
-  >(
+  const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
-      const start = connectStartRef.current;
-      connectStartRef.current = null;
-      setDebug((d) => ({
-        ...d,
-        ends: d.ends + 1,
-        lastEndValid: connectionState ? connectionState.isValid : null,
-        lastEndToNode:
-          (connectionState as { toNode?: unknown } | undefined)?.toNode ?? null,
-      }));
-      if (!start || !connectionState) return;
-      if (connectionState.isValid) return; // edge already created by RF
-
-      const point =
-        "changedTouches" in event && (event as TouchEvent).changedTouches.length > 0
-          ? {
-              x: (event as TouchEvent).changedTouches[0].clientX,
-              y: (event as TouchEvent).changedTouches[0].clientY,
-            }
-          : {
-              x: (event as MouseEvent).clientX,
-              y: (event as MouseEvent).clientY,
-            };
-      const flow = rfApi.screenToFlowPosition(point);
-      setPicker({
-        screenX: point.x,
-        screenY: point.y,
-        flowX: flow.x,
-        flowY: flow.y,
-        sourceId: start.nodeId,
-        sourceHandle: start.handleId ?? null,
-      });
-    },
-    [rfApi],
-  );
-
-  // Empty-canvas first-node CTA: when the user clicks the centre of
-  // an empty pane we open the picker without a source so the chosen
-  // shape is added free-floating.
-  const openEmptyPicker = useCallback(() => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const flow = rfApi.screenToFlowPosition({ x: cx, y: cy });
-    setPicker({
-      screenX: cx,
-      screenY: cy,
-      flowX: flow.x,
-      flowY: flow.y,
-      sourceId: null,
-      sourceHandle: null,
-    });
-  }, [rfApi]);
-
-  /**
-   * Create a node at the given graph-coordinate position. When
-   * ``sourceId`` is provided, also wire a fresh edge from that
-   * source to the new node — used by the drag-to-empty-pane flow.
-   *
-   * Refuses to create a second start node (only one start is valid).
-   * Centers the node on the supplied position so the cursor lands in
-   * its middle (more natural feel than offsetting away).
-   */
-  const addNodeAt = useCallback(
-    (
-      shapeCode: string,
-      flowPos: { x: number; y: number },
-      sourceId: string | null,
-      sourceHandle: string | null,
-    ) => {
-      const shape = shapeByCode.get(shapeCode);
-      if (!shape) return;
-      const category = shape.category as GraphNodeType;
-      // Only one start per scenario.
-      if (category === "start" && value.nodes.some((n) => n.type === "start")) {
-        return;
-      }
-      const id = newNodeId(category[0]);
-      const node: GraphNode = {
+      if (connectionState.isValid) return;
+      const id = newNodeId("n");
+      const { clientX, clientY } =
+        "changedTouches" in event ? event.changedTouches[0] : event;
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
+      const newNode: Node = {
         id,
-        // ``type`` drives React Flow's renderer dispatch — we route
-        // it through the category so any shape with category="action"
-        // uses the shared action-node renderer, etc.
-        type: category,
-        position: { x: flowPos.x - 80, y: flowPos.y - 24 },
-        data: defaultDataForShape(shape),
+        position,
+        data: { label: "Новый шаг", _category: DEFAULT_CATEGORY },
       };
-      const edges: GraphEdge[] = [...value.edges];
-      if (sourceId) {
-        edges.push({
-          id: `e_${sourceId}_${id}`,
-          source: sourceId,
-          target: id,
-          data: sourceHandle ? { branch: sourceHandle } : {},
-        });
+      setNodes((nds) => nds.concat(newNode));
+      if (connectingNodeId.current) {
+        setEdges((eds) =>
+          eds.concat({
+            id: `e_${connectingNodeId.current}_${id}_${Math.random().toString(36).slice(2, 6)}`,
+            source: connectingNodeId.current!,
+            target: id,
+          }),
+        );
       }
-      onChange({ ...value, nodes: [...value.nodes, node], edges });
-      setSelectedId(id);
+      // Open the drawer right away so the user can pick a category /
+      // fill in fields without a separate click.
+      setSelectedNodeId(id);
     },
-    [value, onChange, shapeByCode],
+    [screenToFlowPosition, setNodes, setEdges],
   );
 
-  const handleDeleteSelected = useCallback(() => {
-    if (!selected || selected.type === "start" || selected.type === "end") return;
-    onChange({
-      ...value,
-      nodes: value.nodes.filter((n) => n.id !== selected.id),
-      edges: value.edges.filter(
-        (e) => e.source !== selected.id && e.target !== selected.id,
-      ),
-    });
-    setSelectedId(null);
-  }, [selected, value, onChange]);
+  // ── Edit drawer plumbing ───────────────────────────────────────
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
 
-  // Persist edits from the drawer into the model.
-  const handleSelectedDataChange = (patch: Record<string, unknown>) => {
-    if (!selected) return;
-    onChange({
-      ...value,
-      nodes: value.nodes.map((n) =>
-        n.id === selected.id ? { ...n, data: { ...n.data, ...patch } } : n,
+  const updateSelectedNodeData = (patch: Record<string, unknown>) => {
+    if (!selectedNodeId) return;
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === selectedNodeId ? { ...n, data: { ...n.data, ...patch } } : n,
       ),
-    });
+    );
+  };
+  const deleteSelectedNode = () => {
+    if (!selectedNodeId) return;
+    setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId));
+    setEdges((eds) =>
+      eds.filter(
+        (e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
+      ),
+    );
+    setSelectedNodeId(null);
   };
 
-  // Keyboard shortcut: Delete / Backspace removes selected node.
-  useEffect(() => {
-    const onKey = (ev: KeyboardEvent) => {
-      if ((ev.key === "Delete" || ev.key === "Backspace") && selected) {
-        // Don't steal Backspace from inputs.
-        const tag = (ev.target as HTMLElement | null)?.tagName?.toLowerCase();
-        if (tag === "input" || tag === "textarea") return;
-        ev.preventDefault();
-        handleDeleteSelected();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selected, handleDeleteSelected]);
+  const updateSelectedEdgeData = (patch: Record<string, unknown>) => {
+    if (!selectedEdgeId) return;
+    setEdges((eds) =>
+      eds.map((e) =>
+        e.id === selectedEdgeId
+          ? {
+              ...e,
+              label: typeof patch.label === "string" ? patch.label : e.label,
+              data: { ...(e.data ?? {}), ...patch },
+            }
+          : e,
+      ),
+    );
+  };
+  const deleteSelectedEdge = () => {
+    if (!selectedEdgeId) return;
+    setEdges((eds) => eds.filter((e) => e.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
+  };
 
   return (
     <>
-      {/* Stock React Flow visuals — no <style> overrides on the
-          handles, edges, or any other RF-rendered element. The user
-          asked for the library defaults; this is them. */}
-
-      {/* ─── Compact toolbar ─────────────────────────────────────
-          The Miro-style canvas does most of the heavy lifting via
-          drag-from-handle interactions, so the toolbar only carries
-          two affordances: delete-selected (also bound to Backspace)
-          and a "?" that opens the shape glossary. */}
-      <Space wrap style={{ marginBottom: 8 }}>
-        <Tooltip title="Подсказка по фигурам">
-          <Button
-            icon={<QuestionCircleOutlined />}
-            size="small"
-            onClick={() => setHelpOpen(true)}
-          >
-            Что есть что
-          </Button>
-        </Tooltip>
-        <Tooltip title="Авторазложить узлы по сетке (dagre)">
-          <Button
-            icon={<ClusterOutlined />}
-            size="small"
-            onClick={() => onChange(autoLayout(value))}
-            disabled={value.nodes.length === 0}
-          >
-            Авторазметка
-          </Button>
-        </Tooltip>
-        <Tooltip title="Добавить группу — потом перетащите в неё узлы">
-          <Button
-            icon={<BlockOutlined />}
-            size="small"
-            onClick={() => {
-              // Drop the group at the bottom of the existing layout
-              // so it doesn't cover anything; addNodeAt handles the
-              // shape lookup + default-data plumbing.
-              const ys = value.nodes.map((n) => n.position?.y ?? 0);
-              addNodeAt(
-                "group",
-                { x: 200, y: Math.max(...ys, 0) + 280 },
-                null,
-                null,
-              );
-            }}
-          >
-            Группа
-          </Button>
-        </Tooltip>
-        {selected && selected.type !== "start" && selected.type !== "end" && (
-          <Tooltip title="Удалить выделенный узел (Backspace)">
-            <Button
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={handleDeleteSelected}
-            >
-              Удалить
-            </Button>
-          </Tooltip>
-        )}
-        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-          <ApartmentOutlined /> Потяните мышью от точки на узле — там, где отпустите, появится выбор фигур.
-        </Typography.Text>
-      </Space>
-
-      {/* ─── Validation banner ─────────────────────────────────── */}
-      {(errors.length > 0 || warnings.length > 0) && (
-        <Alert
-          type={errors.length > 0 ? "error" : "warning"}
-          showIcon
-          style={{ marginBottom: 8 }}
-          message={
-            errors.length > 0
-              ? `Граф невалиден: ${errors.length} ${errors.length === 1 ? "ошибка" : "ошибок"}`
-              : `Предупреждений: ${warnings.length}`
-          }
-          description={
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {issues.slice(0, 6).map((i, idx) => (
-                <li key={`${i.target}-${idx}`}>
-                  <Typography.Text
-                    type={i.severity === "error" ? "danger" : "warning"}
-                    style={{ fontSize: 12 }}
-                  >
-                    {i.message}
-                  </Typography.Text>
-                </li>
-              ))}
-              {issues.length > 6 && (
-                <li>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    …и ещё {issues.length - 6}.
-                  </Typography.Text>
-                </li>
-              )}
-            </ul>
-          }
-        />
-      )}
-
-      {/* ─── Canvas ──────────────────────────────────────────────
-          Listens for HTML5 drag-and-drop coming from the shape rail
-          (left side). Drop coords go through screenToFlowPosition
-          to land at the cursor in graph space. */}
-      <div
-        ref={canvasRef}
-        onDragOver={(e) => {
-          // Required to allow drop — without preventDefault the
-          // browser refuses the drop entirely.
-          if (e.dataTransfer.types.includes("application/scenario-shape")) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-          }
-        }}
-        onDrop={(e) => {
-          const code = e.dataTransfer.getData("application/scenario-shape");
-          if (!code) return;
-          e.preventDefault();
-          const flow = rfApi.screenToFlowPosition({
-            x: e.clientX,
-            y: e.clientY,
-          });
-          addNodeAt(code, flow, null, null);
-        }}
-        style={{
-          height,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: 8,
-          background: token.colorFillQuaternary,
-          position: "relative",
-        }}
-      >
+      <div ref={wrapperRef} style={{ width: "100%", height }}>
         <ReactFlow
-          nodes={decoratedRfNodes}
-          edges={rfEdges}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={handleConnect}
-          onConnectStart={handleConnectStart}
-          onConnectEnd={handleConnectEnd}
-          onNodeClick={(_, n) => {
-            setSelectedId(n.id);
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          onNodeClick={(_, node) => {
+            setSelectedNodeId(node.id);
             setSelectedEdgeId(null);
           }}
-          onEdgeClick={(_, e) => {
-            setSelectedEdgeId(e.id);
-            setSelectedId(null);
+          onEdgeClick={(_, edge) => {
+            setSelectedEdgeId(edge.id);
+            setSelectedNodeId(null);
           }}
-          onPaneClick={() => {
-            setSelectedId(null);
-            setSelectedEdgeId(null);
-            // DO NOT setPicker(null) here. The pane click fires on
-            // the SAME mouse-up that triggers ``onConnectEnd``, so
-            // dismissing the picker here would race with opening it
-            // and the picker would never appear. ShapePicker has
-            // its own backdrop that handles outside-click dismissal.
-          }}
-          nodeTypes={SCENARIO_NODE_TYPES}
           fitView
-          fitViewOptions={{ padding: 0.3 }}
-          proOptions={{ hideAttribution: true }}
-          colorMode={themeMode}
-          deleteKeyCode={null} /* handled manually so we can preserve start/end */
-          // 4 handles per side + loose connection mode = each handle
-          // works as source or target. Standard pattern straight from
-          // React Flow's "Add Node on Edge Drop" example.
-          connectionMode={ConnectionMode.Loose}
+          fitViewOptions={{ padding: 2 }}
+          nodeOrigin={[0.5, 0]}
         >
           <Background />
           <Controls />
-          {value.nodes.length > 0 && <MiniMap pannable zoomable />}
+          {nodes.length > 0 && <MiniMap pannable zoomable />}
         </ReactFlow>
-
-        {/* Shape rail — vertical palette glued to the canvas's left
-            edge. Items are HTML5-draggable; dropping anywhere on the
-            canvas creates the corresponding node at the cursor. */}
-        <ShapeRail items={shapeItems} existingHasStart={value.nodes.some((n) => n.type === "start")} />
-
-        {debugEnabled && (
-          <div
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              zIndex: 50,
-              background: "rgba(0,0,0,0.75)",
-              color: "#fff",
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 11,
-              lineHeight: 1.4,
-              padding: "6px 10px",
-              borderRadius: 6,
-              pointerEvents: "none",
-              maxWidth: 280,
-            }}
-          >
-            <div>
-              <b>RF debug</b> — drag handle, watch counts:
-            </div>
-            <div>onConnectStart: {debug.starts}</div>
-            <div>
-              onConnectEnd: {debug.ends} ·{" "}
-              isValid={String(debug.lastEndValid)} ·{" "}
-              toNode={debug.lastEndToNode ? "node" : "null"}
-            </div>
-            <div>lastStart node: {debug.lastStartNode || "—"}</div>
-          </div>
-        )}
-
-        {/* Empty-canvas CTA. The user has to add SOMETHING before
-            they can drag-to-create, so we offer one obvious entry
-            point right at the centre of the empty pane. */}
-        {value.nodes.length === 0 && !picker && (
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              pointerEvents: "none",
-            }}
-          >
-            <div
-              style={{
-                pointerEvents: "auto",
-                textAlign: "center",
-                padding: 24,
-                borderRadius: 12,
-                background: token.colorBgElevated,
-                border: `1px dashed ${token.colorBorder}`,
-                maxWidth: 380,
-              }}
-            >
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={
-                  <span>
-                    Холст пуст. Начните со «Старта» — потом потяните стрелку,
-                    чтобы добавить следующий узел.
-                  </span>
-                }
-              />
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                onClick={openEmptyPicker}
-                style={{ marginTop: 8 }}
-              >
-                Добавить первый узел
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Floating shape picker — appears at the drop position when
-            the user releases a connect-drag in empty space, or in
-            the canvas centre via the empty-state CTA. */}
-        {picker && (
-          <ShapePicker
-            picker={picker}
-            items={shapeItems}
-            existingHasStart={value.nodes.some((n) => n.type === "start")}
-            onPick={(code) => {
-              addNodeAt(
-                code,
-                { x: picker.flowX, y: picker.flowY },
-                picker.sourceId,
-                picker.sourceHandle,
-              );
-              setPicker(null);
-            }}
-            onCancel={() => setPicker(null)}
-          />
-        )}
       </div>
 
-      {/* ─── Edit drawer ───────────────────────────────────────── */}
       <Drawer
-        open={selected !== null}
-        onClose={() => setSelectedId(null)}
+        open={selectedNode !== null}
+        onClose={() => setSelectedNodeId(null)}
+        title={selectedNode ? "Узел сценария" : ""}
         width={420}
-        title={selected ? `Узел: ${selected.type}` : ""}
         destroyOnHidden
       >
-        {selected && (
-          <NodeEditor
-            node={selected}
+        {selectedNode && (
+          <NodeForm
+            node={selectedNode}
             variables={variables}
             allScenarios={allScenarios}
             currentScenarioId={currentScenarioId}
-            actionOptions={dicts.actions}
-            elementOptions={dicts.elements}
-            hasElementsDict={dicts.hasElementsDict}
-            onChange={handleSelectedDataChange}
+            onChange={updateSelectedNodeData}
+            onDelete={deleteSelectedNode}
           />
         )}
       </Drawer>
 
-      {/* ─── Edge edit drawer ──────────────────────────────────── */}
       <Drawer
         open={selectedEdge !== null}
         onClose={() => setSelectedEdgeId(null)}
-        width={420}
         title="Стрелка (переход)"
+        width={420}
         destroyOnHidden
       >
         {selectedEdge && (
-          <EdgeEditor
+          <EdgeForm
             edge={selectedEdge}
-            onChange={updateEdgeData}
-            onDelete={() => {
-              onChange({
-                ...value,
-                edges: value.edges.filter((e) => e.id !== selectedEdge.id),
-              });
-              setSelectedEdgeId(null);
-            }}
+            onChange={updateSelectedEdgeData}
+            onDelete={deleteSelectedEdge}
           />
         )}
       </Drawer>
-
-      {/* ─── Help drawer ───────────────────────────────────────── */}
-      <Drawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        width={460}
-        title="Подсказка по фигурам"
-        destroyOnHidden
-      >
-        <ShapeHelp items={shapeItems} />
-      </Drawer>
     </>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Shape picker — floating popup for the drag-to-create flow.
+// Drawer: node form
 
-// ──────────────────────────────────────────────────────────────────────
-// ShapeRail — vertical palette glued to the canvas's left edge.
-// Each item is HTML5-draggable; on drop the canvas's onDrop handler
-// reads the shape code from dataTransfer and instantiates the node.
-
-function ShapeRail({
-  items,
-  existingHasStart,
-}: {
-  items: ShapeItem[];
-  existingHasStart: boolean;
-}) {
-  const { token } = theme.useToken();
-  // Hide ``start`` once one already exists — only one is valid.
-  const visible = items.filter(
-    (s) => !(s.category === "start" && existingHasStart),
-  );
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 8,
-        left: 8,
-        zIndex: 8,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: 8,
-        background: token.colorBgElevated,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: 10,
-        boxShadow: token.boxShadowTertiary,
-        maxHeight: "calc(100% - 16px)",
-        overflowY: "auto",
-      }}
-    >
-      <Typography.Text
-        type="secondary"
-        style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}
-      >
-        Фигуры
-      </Typography.Text>
-      {visible.map((s) => (
-        <Tooltip key={s.code} title={`${s.label}${s.hint ? " — " + s.hint : ""}`} placement="right">
-          <div
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("application/scenario-shape", s.code);
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-              background: token.colorFillTertiary,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              cursor: "grab",
-              userSelect: "none",
-              fontSize: 18,
-              color: token.colorText,
-              transition: "transform 80ms, box-shadow 80ms",
-            }}
-            onMouseDown={(e) => {
-              (e.currentTarget as HTMLElement).style.cursor = "grabbing";
-            }}
-            onMouseUp={(e) => {
-              (e.currentTarget as HTMLElement).style.cursor = "grab";
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.transform = "scale(1.06)";
-              (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 2px ${token.colorPrimary}33`;
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.transform = "scale(1)";
-              (e.currentTarget as HTMLElement).style.boxShadow = "none";
-            }}
-          >
-            {s.icon}
-          </div>
-        </Tooltip>
-      ))}
-      <Typography.Text
-        type="secondary"
-        style={{ fontSize: 9, lineHeight: 1.2, marginTop: 4, textAlign: "center" }}
-      >
-        перетащите<br />на холст
-      </Typography.Text>
-    </div>
-  );
-}
-
-function ShapePicker({
-  picker,
-  items,
-  existingHasStart,
-  onPick,
-  onCancel,
-}: {
-  picker: {
-    screenX: number;
-    screenY: number;
-    flowX: number;
-    flowY: number;
-    sourceId: string | null;
-    sourceHandle: string | null;
-  };
-  items: ShapeItem[];
-  existingHasStart: boolean;
-  onPick: (code: string) => void;
-  onCancel: () => void;
-}) {
-  // The picker lives in viewport coords (position: fixed) so its
-  // placement is straightforward — just use the captured screen
-  // position. We also dim the rest of the canvas with a click-to-
-  // dismiss backdrop so the user can opt out of the gesture.
-  const { token } = theme.useToken();
-
-  // Hide ``start`` from the picker when one already exists — only
-  // one start is valid per scenario.
-  const visible = items.filter((s) => {
-    if (s.category === "start" && existingHasStart) return false;
-    return true;
-  });
-
-  // Clamp horizontally so the menu doesn't fall off the viewport
-  // edge for drops near the right.
-  const left = Math.min(picker.screenX + 12, window.innerWidth - 240);
-  const top = Math.min(picker.screenY - 8, window.innerHeight - 360);
-
-  return (
-    <>
-      <div
-        // Backdrop catches outside clicks; transparent so the canvas
-        // is still visible underneath.
-        onClick={onCancel}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 999,
-        }}
-      />
-      <div
-        style={{
-          position: "fixed",
-          top,
-          left,
-          zIndex: 1000,
-          background: token.colorBgElevated,
-          border: `1px solid ${token.colorBorder}`,
-          borderRadius: 8,
-          boxShadow: token.boxShadowSecondary,
-          padding: 6,
-          width: 240,
-          maxHeight: 380,
-          overflowY: "auto",
-        }}
-      >
-        <Typography.Text
-          type="secondary"
-          style={{ fontSize: 11, padding: "2px 8px", display: "block" }}
-        >
-          Выберите фигуру
-        </Typography.Text>
-        {visible.map((s) => (
-          <Tooltip key={s.code} title={s.hint} placement="right">
-            <div
-              role="button"
-              onClick={() => onPick(s.code)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                cursor: "pointer",
-                borderRadius: 6,
-                fontSize: 13,
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = token.colorFillTertiary)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>
-                {s.icon}
-              </span>
-              <span>{s.label}</span>
-            </div>
-          </Tooltip>
-        ))}
-      </div>
-    </>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// In-app glossary — explains every shape so first-time users know
-// what to pick. Surfaced via the "Что есть что" toolbar button.
-
-function ShapeHelp({ items }: { items: ShapeItem[] }) {
-  const { token } = theme.useToken();
-  return (
-    <div>
-      <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        Сценарий — это диаграмма из узлов и стрелок. Агент идёт по
-        стрелкам от «Начала» к «Концу», выполняя действия в узлах.
-      </Typography.Paragraph>
-      <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-        {items.map((s) => (
-          <li
-            key={s.code}
-            style={{
-              display: "flex",
-              gap: 12,
-              padding: "10px 0",
-              borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 18,
-                width: 28,
-                textAlign: "center",
-                color: token.colorPrimary,
-              }}
-            >
-              {s.icon}
-            </span>
-            <div>
-              <Typography.Text strong>{s.label}</Typography.Text>
-              <div>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {s.hint}
-                </Typography.Text>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <Typography.Paragraph
-        type="secondary"
-        style={{ fontSize: 12, marginTop: 12 }}
-      >
-        Соединить два узла — потяните мышью от точки на одном к точке на
-        другом. Чтобы открыть редактор узла или стрелки — кликните по
-        ним. Чтобы удалить выделенный узел — нажмите Backspace или
-        кнопку «Удалить» в верхней панели.
-      </Typography.Paragraph>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-
-function NodeEditor({
+function NodeForm({
   node,
   variables,
   allScenarios,
   currentScenarioId,
-  actionOptions,
-  elementOptions,
-  hasElementsDict,
   onChange,
+  onDelete,
 }: {
-  node: GraphNode;
+  node: Node;
   variables?: { key: string; value?: string }[];
   allScenarios?: { id: string; title: string }[];
   currentScenarioId?: string;
-  actionOptions: DictItem[];
-  elementOptions: DictItem[];
-  hasElementsDict: boolean;
   onChange: (patch: Record<string, unknown>) => void;
+  onDelete: () => void;
 }) {
-  if (node.type === "action") {
-    const d = node.data as ActionNodeData;
-    return (
-      <Form layout="vertical">
-        <Form.Item label="Действие">
-          <Select
-            value={d.action ?? "tap"}
-            onChange={(v) => onChange({ action: v })}
-            options={actionOptions}
-          />
-        </Form.Item>
-        <Form.Item
-          label="Элемент"
-          extra={
-            hasElementsDict
-              ? "Подсказки берутся из справочника «Элементы UI»."
-              : "Подсказок нет — заведите справочник с кодом ui_elements в разделе «Справочники», чтобы появился autocomplete."
-          }
-        >
-          <AutoComplete
-            value={d.element_label ?? ""}
-            onChange={(v) => onChange({ element_label: v ?? "" })}
-            options={elementOptions}
-            placeholder="Кнопка, поле, переключатель..."
-            filterOption={(input, option) =>
-              (option?.label ?? "")
-                .toString()
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
-        <Form.Item label="Значение">
-          <Input
-            value={d.value ?? ""}
-            onChange={(e) => onChange({ value: e.target.value })}
-            placeholder="Текст или {{test_data.key}}"
-          />
-        </Form.Item>
-        <Form.Item
-          label="Ожидаемый результат"
-          extra="Опционально — будет сверяться с базой знаний."
-        >
-          <Input.TextArea
-            rows={2}
-            value={d.expected_result ?? ""}
-            onChange={(e) => onChange({ expected_result: e.target.value })}
-          />
-        </Form.Item>
-        <Form.Item
-          label="Описание экрана"
-          extra="Опишите экран словами на любом языке. Если пусто — проверки нет; если заполнено, перед шагом агент сверится с реальным экраном."
-        >
-          <Input
-            value={d.screen_description ?? ""}
-            onChange={(e) => onChange({ screen_description: e.target.value })}
-            placeholder="например: экран входа"
-          />
-        </Form.Item>
-        {variables && variables.length > 0 && (
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            Доступные переменные: {variables.slice(0, 6).map((v) => `{{${v.key}}}`).join(", ")}
-            {variables.length > 6 ? ", …" : ""}
-          </Typography.Text>
-        )}
-      </Form>
-    );
-  }
+  // ``data._category`` carries the semantic type; the rest of ``data``
+  // is the per-type payload (action, element_label, value, etc.)
+  const d = (node.data ?? {}) as Record<string, unknown>;
+  const category = (d._category as GraphNodeType) ?? "action";
 
-  if (node.type === "decision") {
-    const d = node.data as { label?: string };
-    return (
-      <Form layout="vertical">
-        <Form.Item
-          label="Подпись узла"
-          extra="Условия ветвления задаются на исходящих стрелках — кликните по стрелке для редактирования."
-        >
-          <Input
-            value={d.label ?? ""}
-            onChange={(e) => onChange({ label: e.target.value })}
-            placeholder="Например: пользователь админ?"
-          />
-        </Form.Item>
-      </Form>
-    );
-  }
+  return (
+    <Form layout="vertical">
+      <Form.Item label="Тип узла">
+        <Select
+          value={category}
+          options={CATEGORY_OPTIONS}
+          onChange={(v) => onChange({ _category: v })}
+        />
+      </Form.Item>
+      <Form.Item label="Подпись (видна на холсте)">
+        <Input
+          value={(d.label as string) ?? ""}
+          onChange={(e) => onChange({ label: e.target.value })}
+        />
+      </Form.Item>
 
-  if (node.type === "wait") {
-    const d = node.data as { ms?: number };
-    return (
-      <Form layout="vertical">
+      {category === "action" && (
+        <>
+          <Form.Item label="Действие">
+            <Select
+              value={(d.action as string) ?? "tap"}
+              options={ACTION_VERBS}
+              onChange={(v) => onChange({ action: v })}
+            />
+          </Form.Item>
+          <Form.Item label="Элемент">
+            <Input
+              value={(d.element_label as string) ?? ""}
+              onChange={(e) => onChange({ element_label: e.target.value })}
+              placeholder="Кнопка, поле, переключатель…"
+            />
+          </Form.Item>
+          <Form.Item label="Значение">
+            <Input
+              value={(d.value as string) ?? ""}
+              onChange={(e) => onChange({ value: e.target.value })}
+              placeholder="Текст или {{test_data.key}}"
+            />
+          </Form.Item>
+          <Form.Item label="Ожидаемый результат">
+            <Input.TextArea
+              rows={2}
+              value={(d.expected_result as string) ?? ""}
+              onChange={(e) => onChange({ expected_result: e.target.value })}
+            />
+          </Form.Item>
+          <Form.Item label="Описание экрана">
+            <Input.TextArea
+              rows={2}
+              value={(d.screen_description as string) ?? ""}
+              onChange={(e) => onChange({ screen_description: e.target.value })}
+            />
+          </Form.Item>
+        </>
+      )}
+
+      {category === "wait" && (
         <Form.Item label="Длительность (мс)">
           <InputNumber
             min={100}
             max={60_000}
-            step={100}
-            value={d.ms ?? 1000}
+            value={(d.ms as number) ?? 1000}
             onChange={(v) => onChange({ ms: v ?? 1000 })}
             style={{ width: "100%" }}
           />
         </Form.Item>
-      </Form>
-    );
-  }
+      )}
 
-  if (node.type === "screen_check") {
-    const d = node.data as { screen_description?: string };
-    return (
-      <Form layout="vertical">
-        <Form.Item
-          label="Описание экрана"
-          extra="Агент сверит текущий экран с этим описанием перед тем, как продолжить."
-        >
+      {category === "screen_check" && (
+        <Form.Item label="Описание экрана">
           <Input.TextArea
             rows={3}
-            value={d.screen_description ?? ""}
+            value={(d.screen_description as string) ?? ""}
             onChange={(e) => onChange({ screen_description: e.target.value })}
-            placeholder="например: главная страница со списком заказов"
           />
         </Form.Item>
-      </Form>
-    );
-  }
+      )}
 
-  if (node.type === "loop_back") {
-    const d = node.data as { max_iterations?: number };
-    return (
-      <Form layout="vertical">
+      {category === "loop_back" && (
         <Form.Item label="Максимум итераций">
           <InputNumber
             min={1}
             max={1000}
-            value={d.max_iterations ?? 10}
+            value={(d.max_iterations as number) ?? 10}
             onChange={(v) => onChange({ max_iterations: v ?? 10 })}
             style={{ width: "100%" }}
           />
         </Form.Item>
-      </Form>
-    );
-  }
+      )}
 
-  if (node.type === "group") {
-    const d = node.data as { label?: string };
-    return (
-      <Form layout="vertical">
-        <Form.Item
-          label="Название группы"
-          extra="Группа — это просто визуальный контейнер. Перетащите внутрь неё узлы, чтобы объединить смысловой блок."
-        >
-          <Input
-            value={d.label ?? ""}
-            onChange={(e) => onChange({ label: e.target.value })}
-            placeholder="например: Регистрация"
-          />
-        </Form.Item>
-      </Form>
-    );
-  }
-
-  if (node.type === "sub_scenario") {
-    const d = node.data as {
-      linked_scenario_id?: string;
-      linked_scenario_title?: string;
-    };
-    const options = (allScenarios ?? [])
-      .filter((s) => s.id !== currentScenarioId)
-      .map((s) => ({ value: s.id, label: s.title || s.id.slice(0, 8) }));
-    return (
-      <Form layout="vertical">
-        <Form.Item
-          label="Сценарий, который нужно запустить"
-          extra="Агент дойдёт до этого узла, выполнит выбранный сценарий целиком и вернётся, чтобы продолжить текущий."
-        >
+      {category === "sub_scenario" && (
+        <Form.Item label="Сценарий">
           <Select
             showSearch
             allowClear
-            placeholder="Выберите сценарий"
-            value={d.linked_scenario_id}
+            value={(d.linked_scenario_id as string) ?? null}
+            options={(allScenarios ?? [])
+              .filter((s) => s.id !== currentScenarioId)
+              .map((s) => ({ value: s.id, label: s.title }))}
             optionFilterProp="label"
-            options={options}
-            onChange={(v) => {
-              const picked = (allScenarios ?? []).find((s) => s.id === v);
+            onChange={(v) =>
               onChange({
                 linked_scenario_id: v ?? undefined,
-                linked_scenario_title: picked?.title ?? undefined,
-              });
-            }}
+                linked_scenario_title:
+                  (allScenarios ?? []).find((s) => s.id === v)?.title,
+              })
+            }
           />
         </Form.Item>
-        {options.length === 0 && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            В этом рабочем пространстве пока нет других сценариев. Создайте
-            ещё один и вернитесь сюда — он появится в списке.
-          </Typography.Text>
-        )}
-      </Form>
-    );
-  }
+      )}
 
-  return (
-    <Typography.Text type="secondary">
-      Узел этого типа — без редактируемых полей.
-    </Typography.Text>
+      {variables && variables.length > 0 && (
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          Переменные:{" "}
+          {variables.slice(0, 6).map((v) => `{{${v.key}}}`).join(", ")}
+          {variables.length > 6 ? ", …" : ""}
+        </Typography.Text>
+      )}
+
+      <Form.Item style={{ marginTop: 24 }}>
+        <Button danger onClick={onDelete}>
+          Удалить узел
+        </Button>
+      </Form.Item>
+    </Form>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// PER-83: edge condition + label editor.
+// Drawer: edge form
 
-function EdgeEditor({
+function EdgeForm({
   edge,
   onChange,
   onDelete,
 }: {
-  edge: GraphEdge;
+  edge: Edge;
   onChange: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
-  const data = edge.data ?? {};
+  const d = (edge.data ?? {}) as Record<string, unknown>;
   return (
     <Form layout="vertical">
       <Form.Item
         label="Условие"
-        extra={
-          <span>
-            Выражение проверяется перед переходом по этому ребру.
-            Поддерживаются: <code>==</code>, <code>!=</code>, <code>{"<"}</code>,{" "}
-            <code>{">"}</code>, <code>&&</code>, <code>||</code>, <code>!</code>,
-            функции <code>contains()</code>, <code>starts_with()</code>,{" "}
-            <code>ends_with()</code>, <code>length()</code>. Переменные —{" "}
-            <code>{`{{test_data.x}}`}</code>,{" "}
-            <code>{`{{last_action_result.ok}}`}</code>. Пустое поле = ветка
-            «иначе».
-          </span>
-        }
+        extra="Опционально. Если задано, агент пойдёт по этой стрелке только когда выражение истинно."
       >
         <Input.TextArea
           rows={2}
-          value={(data.condition as string | undefined) ?? ""}
+          value={(d.condition as string) ?? ""}
           onChange={(e) => onChange({ condition: e.target.value })}
           placeholder='{{test_data.role}} == "admin"'
           style={{ fontFamily: "monospace" }}
         />
       </Form.Item>
-      <Form.Item
-        label="Подпись"
-        extra="Опционально. Если задано — рисуется на ребре вместо условия."
-      >
+      <Form.Item label="Подпись">
         <Input
-          value={(data.label as string | undefined) ?? ""}
+          value={
+            (typeof edge.label === "string" ? edge.label : (d.label as string)) ?? ""
+          }
           onChange={(e) => onChange({ label: e.target.value })}
-          placeholder="например: admin"
         />
       </Form.Item>
-      <Form.Item
-        label="Это back-edge (цикл)"
-        extra="Включите для рёбер, возвращающих поток назад по графу. Worker считает повторы и останавливается при достижении max_iterations."
-      >
+      <Form.Item label="Это обратное ребро (цикл)">
         <Space>
           <Switch
-            checked={Boolean(data.loop)}
+            checked={Boolean(d.loop)}
             onChange={(checked) => onChange({ loop: checked })}
           />
-          {Boolean(data.loop) && (
+          {Boolean(d.loop) && (
             <InputNumber
               min={1}
               max={1000}
-              placeholder="max"
-              value={(data.max_iterations as number | undefined) ?? undefined}
+              placeholder="максимум итераций"
+              value={(d.max_iterations as number) ?? undefined}
               onChange={(v) => onChange({ max_iterations: v ?? undefined })}
               addonAfter="итераций"
               style={{ width: 180 }}
@@ -1564,10 +513,83 @@ function EdgeEditor({
         </Space>
       </Form.Item>
       <Form.Item>
-        <Button danger size="small" onClick={onDelete}>
-          Удалить ребро
+        <Button danger onClick={onDelete}>
+          Удалить стрелку
         </Button>
       </Form.Item>
     </Form>
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// v2 ↔ RF conversion
+
+function v2ToRf(graph: ScenarioGraphV2): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = (graph.nodes ?? []).map((n) => ({
+    id: n.id,
+    position: n.position ?? { x: 0, y: 0 },
+    data: {
+      ...(n.data ?? {}),
+      _category: n.type,
+      label:
+        (n.data as { element_label?: string; label?: string } | undefined)
+          ?.label ??
+        (n.data as { element_label?: string } | undefined)?.element_label ??
+        labelForCategory(n.type),
+    },
+  }));
+  const edges: Edge[] = (graph.edges ?? []).map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    label: (e.data?.label as string | undefined) ?? undefined,
+    data: e.data ?? {},
+  }));
+  return { nodes, edges };
+}
+
+function rfToV2(nodes: Node[], edges: Edge[], version: 2): ScenarioGraphV2 {
+  return {
+    version,
+    nodes: nodes.map<GraphNode>((n) => {
+      const d = (n.data ?? {}) as Record<string, unknown>;
+      const category = (d._category as GraphNodeType) ?? "action";
+      // Strip the internal ``_category`` and ``label`` fields out of
+      // the stored data so they don't pile up alongside the real
+      // semantic fields.
+      const cleanData: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(d)) {
+        if (k === "_category") continue;
+        cleanData[k] = v;
+      }
+      return {
+        id: n.id,
+        type: category,
+        position: n.position ?? { x: 0, y: 0 },
+        data: cleanData,
+      };
+    }),
+    edges: edges.map<GraphEdge>((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      data: {
+        ...(e.data ?? {}),
+        label: (e.data?.label as string | undefined) ?? (typeof e.label === "string" ? e.label : undefined),
+      },
+    })),
+  };
+}
+
+function labelForCategory(c: GraphNodeType): string {
+  return (
+    CATEGORY_OPTIONS.find((o) => o.value === c)?.label ?? c
+  );
+}
+
+// Used by the parent to know we still need this import despite not
+// rendering the API client directly here yet — keeps tree-shaking
+// happy and lets the dictionary integration come back later without
+// import churn.
+void listScenarioShapes;
+void useQuery;
