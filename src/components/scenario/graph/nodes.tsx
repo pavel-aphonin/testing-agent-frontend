@@ -41,29 +41,46 @@ const ACTION_GLYPH: Record<ActionVerb, string> = {
   back: "↩",
 };
 
-const HANDLE_STYLE = { width: 8, height: 8, background: "#EE3424" };
+// Handles need to be obviously grabbable — 8×8 was hard to aim at
+// and users were dragging the node body / panning the canvas instead
+// of starting a connection. The bigger dot + visible white ring
+// reads as "this is the place to grab".
+const HANDLE_STYLE = {
+  width: 14,
+  height: 14,
+  background: "#EE3424",
+  border: "2px solid #fff",
+  boxShadow: "0 0 0 1px rgba(0,0,0,0.15)",
+};
 
 // ─────────────────────────────────────── Start / End
+
+// Start and End render as proper BPMN circles (not pills) — single
+// shape per node so React Flow positions handles consistently. Icon
+// on top, label below inside the circle in a small caption font.
+const TERMINAL_SIZE = 84;
 
 export function StartNode() {
   return (
     <div
       style={{
-        width: 120,
-        height: 44,
-        borderRadius: 22,
+        width: TERMINAL_SIZE,
+        height: TERMINAL_SIZE,
+        borderRadius: "50%",
         background: "#52c41a",
         color: "#fff",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        fontWeight: 600,
-        fontSize: 14,
-        gap: 6,
+        gap: 2,
+        boxShadow: "inset 0 0 0 3px rgba(255,255,255,0.25)",
       }}
     >
-      <PlayCircleOutlined />
-      Начало
+      <PlayCircleOutlined style={{ fontSize: 22 }} />
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
+        Начало
+      </span>
       <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
@@ -73,21 +90,25 @@ export function EndNode() {
   return (
     <div
       style={{
-        width: 120,
-        height: 44,
-        borderRadius: 22,
+        width: TERMINAL_SIZE,
+        height: TERMINAL_SIZE,
+        borderRadius: "50%",
         background: "#ff4d4f",
         color: "#fff",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        fontWeight: 600,
-        fontSize: 14,
-        gap: 6,
+        gap: 2,
+        // BPMN convention: end terminator has a thicker ring so
+        // it's distinguishable from start at a glance.
+        boxShadow: "inset 0 0 0 4px rgba(255,255,255,0.3)",
       }}
     >
-      <PoweroffOutlined />
-      Конец
+      <PoweroffOutlined style={{ fontSize: 22 }} />
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
+        Конец
+      </span>
       <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
     </div>
   );

@@ -19,8 +19,8 @@ import type { GraphNode, ScenarioGraphV2 } from "./types";
 const DEFAULT_SIZE = { w: 220, h: 80 };
 
 const NODE_SIZES: Record<GraphNode["type"], { w: number; h: number }> = {
-  start: { w: 120, h: 44 },
-  end: { w: 120, h: 44 },
+  start: { w: 84, h: 84 },
+  end: { w: 84, h: 84 },
   action: { w: 220, h: 90 },
   decision: { w: 160, h: 96 },
   wait: { w: 160, h: 50 },
