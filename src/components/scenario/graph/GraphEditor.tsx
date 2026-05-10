@@ -127,18 +127,38 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
   );
   const rfEdges: Edge[] = useMemo(
     () =>
-      value.edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        // Loop edges drawn dashed + warning colour as a visual hint —
-        // PER-84 will style this more carefully.
-        animated: !e.data?.loop,
-        style: e.data?.loop
-          ? { stroke: token.colorWarning, strokeDasharray: "5 5", strokeWidth: 2 }
-          : { stroke: token.colorTextTertiary, strokeWidth: 1.5 },
-        label: e.data?.label,
-      })),
+      value.edges.map((e) => {
+        // PER-83: surface condition expressions on the edge label so
+        // the user sees branching logic at a glance. Explicit
+        // ``data.label`` (set by the user in the edge editor) wins
+        // over the auto-derived condition string.
+        const explicit = e.data?.label;
+        const cond = (e.data?.condition ?? "").toString().trim();
+        const display = explicit || (cond ? cond : undefined);
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          // Loop edges drawn dashed + warning colour as a visual hint —
+          // PER-84 will style this more carefully.
+          animated: !e.data?.loop,
+          style: e.data?.loop
+            ? { stroke: token.colorWarning, strokeDasharray: "5 5", strokeWidth: 2 }
+            : { stroke: token.colorTextTertiary, strokeWidth: 1.5 },
+          label: display,
+          labelStyle: {
+            fontSize: 11,
+            fill: token.colorText,
+            fontFamily: cond && !explicit ? "monospace" : undefined,
+          },
+          labelBgStyle: {
+            fill: token.colorBgContainer,
+            fillOpacity: 0.85,
+          },
+          labelBgPadding: [4, 2] as [number, number],
+          labelBgBorderRadius: 4,
+        };
+      }),
     [value.edges, token],
   );
 
@@ -148,6 +168,29 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
     () => (selectedId ? value.nodes.find((n) => n.id === selectedId) ?? null : null),
     [selectedId, value.nodes],
   );
+
+  // PER-83: selected edge — separate state so the user can edit edge
+  // condition/label without dismissing the node drawer first.
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const selectedEdge = useMemo(
+    () =>
+      selectedEdgeId
+        ? value.edges.find((e) => e.id === selectedEdgeId) ?? null
+        : null,
+    [selectedEdgeId, value.edges],
+  );
+
+  const updateEdgeData = (patch: Record<string, unknown>) => {
+    if (!selectedEdge) return;
+    onChange({
+      ...value,
+      edges: value.edges.map((e) =>
+        e.id === selectedEdge.id
+          ? { ...e, data: { ...(e.data ?? {}), ...patch } }
+          : e,
+      ),
+    });
+  };
 
   // Apply React Flow's incremental changes back into the v2 model.
   const handleNodesChange = useCallback(
@@ -346,8 +389,18 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
-          onNodeClick={(_, n) => setSelectedId(n.id)}
-          onPaneClick={() => setSelectedId(null)}
+          onNodeClick={(_, n) => {
+            setSelectedId(n.id);
+            setSelectedEdgeId(null);
+          }}
+          onEdgeClick={(_, e) => {
+            setSelectedEdgeId(e.id);
+            setSelectedId(null);
+          }}
+          onPaneClick={() => {
+            setSelectedId(null);
+            setSelectedEdgeId(null);
+          }}
           nodeTypes={SCENARIO_NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.3 }}
@@ -387,6 +440,29 @@ export function GraphEditor({ value, onChange, variables, height = 600 }: Props)
             node={selected}
             variables={variables}
             onChange={handleSelectedDataChange}
+          />
+        )}
+      </Drawer>
+
+      {/* ─── Edge edit drawer (PER-83) ─────────────────────────── */}
+      <Drawer
+        open={selectedEdge !== null}
+        onClose={() => setSelectedEdgeId(null)}
+        width={420}
+        title="Ребро (переход)"
+        destroyOnHidden
+      >
+        {selectedEdge && (
+          <EdgeEditor
+            edge={selectedEdge}
+            onChange={updateEdgeData}
+            onDelete={() => {
+              onChange({
+                ...value,
+                edges: value.edges.filter((e) => e.id !== selectedEdge.id),
+              });
+              setSelectedEdgeId(null);
+            }}
           />
         )}
       </Drawer>
@@ -536,5 +612,62 @@ function NodeEditor({
     <Typography.Text type="secondary">
       Узел типа «{node.type}» — без редактируемых полей.
     </Typography.Text>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// PER-83: edge condition + label editor.
+
+function EdgeEditor({
+  edge,
+  onChange,
+  onDelete,
+}: {
+  edge: GraphEdge;
+  onChange: (patch: Record<string, unknown>) => void;
+  onDelete: () => void;
+}) {
+  const data = edge.data ?? {};
+  return (
+    <Form layout="vertical">
+      <Form.Item
+        label="Условие"
+        extra={
+          <span>
+            Выражение проверяется перед переходом по этому ребру.
+            Поддерживаются: <code>==</code>, <code>!=</code>, <code>{"<"}</code>,{" "}
+            <code>{">"}</code>, <code>&&</code>, <code>||</code>, <code>!</code>,
+            функции <code>contains()</code>, <code>starts_with()</code>,{" "}
+            <code>ends_with()</code>, <code>length()</code>. Переменные —{" "}
+            <code>{`{{test_data.x}}`}</code>,{" "}
+            <code>{`{{last_action_result.ok}}`}</code>. Пустое поле = ветка
+            «иначе».
+          </span>
+        }
+      >
+        <Input.TextArea
+          rows={2}
+          value={(data.condition as string | undefined) ?? ""}
+          onChange={(e) => onChange({ condition: e.target.value })}
+          placeholder='{{test_data.role}} == "admin"'
+          style={{ fontFamily: "monospace" }}
+        />
+      </Form.Item>
+      <Form.Item
+        label="Подпись"
+        extra="Опционально. Если задано — рисуется на ребре вместо условия."
+      >
+        <Input
+          value={(data.label as string | undefined) ?? ""}
+          onChange={(e) => onChange({ label: e.target.value })}
+          placeholder="например: admin"
+        />
+      </Form.Item>
+      <Form.Item>
+        <Button danger size="small" onClick={onDelete}>
+          Удалить ребро
+        </Button>
+      </Form.Item>
+    </Form>
   );
 }
