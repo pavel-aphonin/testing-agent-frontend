@@ -17,7 +17,7 @@ import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { AdminDevices } from "@/pages/AdminDevices";
 import { AdminKnowledge } from "@/pages/AdminKnowledge";
 import { AdminModels } from "@/pages/AdminModels";
-import { AdminScenarios } from "@/pages/AdminScenarios";
+import { AdminScenarios, AdminScenarioEdit } from "@/pages/AdminScenarios";
 import { AdminUsers } from "@/pages/AdminUsers";
 import { Dictionaries } from "@/pages/Dictionaries";
 import { AdminApps } from "@/pages/AdminApps";
@@ -199,6 +199,14 @@ export default function App() {
             element={
               <ProtectedRoute requirePermission="scenarios.view">
                 <AdminScenarios />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/scenarios/:id"
+            element={
+              <ProtectedRoute requirePermission="scenarios.view">
+                <AdminScenarioEdit />
               </ProtectedRoute>
             }
           />
