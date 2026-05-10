@@ -145,10 +145,38 @@ const CIRCLE_BASE: CSSProperties = {
   lineHeight: 1.2,
 };
 
+// Four-sided handles, one per side. With ConnectionMode.Loose the
+// user can drag from any of them — RF's strict source-vs-target
+// gating is off, so we just need each handle to be on the canvas
+// for the gesture to start. Distinct IDs let edges remember which
+// side they came out of so re-renders don't snap them back to the
+// top/bottom default.
+//
+// ``hasIn`` / ``hasOut`` toggle the target / source pairs as a
+// whole. Start nodes pass hasIn={false} (nothing flows in), end
+// nodes pass hasOut={false} (nothing flows out). Everything else
+// gets the full four.
+function SideHandles({
+  hasIn = true,
+  hasOut = true,
+}: {
+  hasIn?: boolean;
+  hasOut?: boolean;
+}) {
+  return (
+    <>
+      {hasIn && <Handle type="target" id="t" position={Position.Top} />}
+      {hasIn && <Handle type="target" id="l" position={Position.Left} />}
+      {hasOut && <Handle type="source" id="b" position={Position.Bottom} />}
+      {hasOut && <Handle type="source" id="r" position={Position.Right} />}
+    </>
+  );
+}
+
 function StartNodeCircle({ data }: NodeProps) {
   return (
     <div style={{ ...CIRCLE_BASE, background: "#52c41a" }}>
-      <Handle type="source" position={Position.Bottom} />
+      <SideHandles hasIn={false} />
       {(data?.label as string) ?? "Начало"}
     </div>
   );
@@ -157,7 +185,7 @@ function StartNodeCircle({ data }: NodeProps) {
 function EndNodeCircle({ data }: NodeProps) {
   return (
     <div style={{ ...CIRCLE_BASE, background: "#f5222d" }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles hasOut={false} />
       {(data?.label as string) ?? "Конец"}
     </div>
   );
@@ -166,9 +194,8 @@ function EndNodeCircle({ data }: NodeProps) {
 function ActionNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#1677ff" }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Действие"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -176,9 +203,8 @@ function ActionNodeCard({ data }: NodeProps) {
 function DecisionNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#fa8c16", borderRadius: 24 }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Условие"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -186,9 +212,8 @@ function DecisionNodeCard({ data }: NodeProps) {
 function WaitNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#8c8c8c", borderRadius: 999 }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Пауза"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -196,9 +221,8 @@ function WaitNodeCard({ data }: NodeProps) {
 function ScreenCheckNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#722ed1" }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Проверка экрана"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -206,9 +230,8 @@ function ScreenCheckNodeCard({ data }: NodeProps) {
 function SubScenarioNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#13c2c2" }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Связанный сценарий"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -216,9 +239,8 @@ function SubScenarioNodeCard({ data }: NodeProps) {
 function LoopBackNodeCard({ data }: NodeProps) {
   return (
     <div style={{ ...CARD_BASE, background: "#d4b106", borderRadius: 24 }}>
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Возврат"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -233,9 +255,8 @@ function GroupNodeCard({ data }: NodeProps) {
         border: "1px dashed #bfbfbf",
       }}
     >
-      <Handle type="target" position={Position.Top} />
+      <SideHandles />
       {(data?.label as string) ?? "Группа"}
-      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
@@ -802,13 +823,27 @@ function v2ToRf(graph: ScenarioGraphV2): { nodes: Node[]; edges: Edge[] } {
     }
     return base;
   });
-  const edges: Edge[] = (graph.edges ?? []).map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: (e.data?.label as string | undefined) ?? undefined,
-    data: e.data ?? {},
-  }));
+  const edges: Edge[] = (graph.edges ?? []).map((e) => {
+    const d = e.data ?? {};
+    // Per-edge handle IDs are stored in data with an underscore
+    // prefix (same convention as node category). For legacy edges
+    // that pre-date side handles we default to bottom→top, the
+    // single source/target the editor used to render — keeps old
+    // scenarios looking the way they always did.
+    const sourceHandle =
+      (d._sourceHandle as string | undefined) ?? "b";
+    const targetHandle =
+      (d._targetHandle as string | undefined) ?? "t";
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle,
+      targetHandle,
+      label: (d.label as string | undefined) ?? undefined,
+      data: d,
+    };
+  });
   return { nodes, edges };
 }
 
@@ -839,7 +874,14 @@ function rfToV2(nodes: Node[], edges: Edge[], version: 2): ScenarioGraphV2 {
       target: e.target,
       data: {
         ...(e.data ?? {}),
-        label: (e.data?.label as string | undefined) ?? (typeof e.label === "string" ? e.label : undefined),
+        label:
+          (e.data?.label as string | undefined) ??
+          (typeof e.label === "string" ? e.label : undefined),
+        // Persist which side of the node the user dragged from so
+        // re-hydrating the graph (or reloading from the server)
+        // doesn't snap edges back to bottom→top.
+        _sourceHandle: e.sourceHandle ?? undefined,
+        _targetHandle: e.targetHandle ?? undefined,
       },
     })),
   };
