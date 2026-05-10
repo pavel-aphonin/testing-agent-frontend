@@ -41,10 +41,35 @@ export function Login() {
       // workspace. DashboardPage redirects to the specific dashboard.
       navigate(from ?? "/dashboard", { replace: true });
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail ?? t("auth.loginError");
-      setError(typeof detail === "string" ? detail : t("auth.loginError"));
+      // FastAPI Users returns string error codes like
+      // ``LOGIN_BAD_CREDENTIALS`` / ``LOGIN_USER_NOT_VERIFIED`` in
+      // ``detail`` — those aren't user-facing. Map the ones we know
+      // to plain Russian; everything else falls through to a generic
+      // "не удалось войти" so we never leak shouty SCREAMING_CASE
+      // codes to the form.
+      const rawDetail =
+        (err as { response?: { data?: { detail?: unknown } } })?.response?.data
+          ?.detail;
+      const codeOrText =
+        typeof rawDetail === "string"
+          ? rawDetail
+          : rawDetail && typeof rawDetail === "object" && "message" in (rawDetail as Record<string, unknown>)
+          ? String((rawDetail as { message: unknown }).message)
+          : "";
+      const HUMAN: Record<string, string> = {
+        LOGIN_BAD_CREDENTIALS:
+          "Неверный email или пароль. Проверьте раскладку и Caps Lock.",
+        LOGIN_USER_NOT_VERIFIED: "Учётная запись не подтверждена.",
+        REGISTER_USER_ALREADY_EXISTS: "Пользователь с таким email уже существует.",
+        UPDATE_USER_INVALID_PASSWORD: "Пароль не подходит.",
+      };
+      const friendly =
+        HUMAN[codeOrText] ||
+        // Looks like a SCREAMING_CASE code we didn't translate? Hide
+        // it under the generic message rather than show it raw.
+        (/^[A-Z_]+$/.test(codeOrText) ? t("auth.loginError") : codeOrText) ||
+        t("auth.loginError");
+      setError(friendly);
       useAuthStore.getState().logout();
     } finally {
       setSubmitting(false);

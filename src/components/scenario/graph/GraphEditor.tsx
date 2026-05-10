@@ -697,31 +697,25 @@ function GraphEditorInner({
 
   return (
     <>
-      {/* Hover affordance — handle dots scale up + brighten when the
-          user hovers the node, so it's obvious where to grab to draw
-          a connection. Without this users were panning the canvas /
-          dragging nodes when they meant to start an edge. */}
+      {/* Hover affordance for handle dots. We deliberately do NOT
+          touch ``transform`` here — React Flow positions handles via
+          per-side translate(...) and overriding it shifts the visual
+          dot away from its hit target, so clicks land on the pane
+          and trigger panning instead of starting a connection. The
+          halo is done with box-shadow only, which preserves layout. */}
       <style>{`
         .react-flow__node .react-flow__handle {
-          opacity: 0.85;
-          transition: transform 120ms, opacity 120ms, box-shadow 120ms;
+          opacity: 1;
+          transition: box-shadow 120ms ease-out;
         }
         .react-flow__node:hover .react-flow__handle {
-          opacity: 1;
-          transform: translate(-50%, -50%) scale(1.3);
-          box-shadow: 0 0 0 4px rgba(238, 52, 36, 0.18);
+          box-shadow:
+            0 0 0 1.5px rgba(0,0,0,0.2),
+            0 0 0 6px rgba(238, 52, 36, 0.22);
         }
-        .react-flow__node:hover .react-flow__handle.react-flow__handle-bottom {
-          transform: translate(-50%, 0) scale(1.3);
-        }
-        .react-flow__node:hover .react-flow__handle.react-flow__handle-top {
-          transform: translate(-50%, -100%) scale(1.3);
-        }
-        .react-flow__node:hover .react-flow__handle.react-flow__handle-left {
-          transform: translate(-100%, -50%) scale(1.3);
-        }
-        .react-flow__node:hover .react-flow__handle.react-flow__handle-right {
-          transform: translate(0, -50%) scale(1.3);
+        .react-flow__handle.connectionindicator,
+        .react-flow__handle {
+          cursor: crosshair !important;
         }
       `}</style>
 

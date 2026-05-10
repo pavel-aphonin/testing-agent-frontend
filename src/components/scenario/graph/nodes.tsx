@@ -41,16 +41,17 @@ const ACTION_GLYPH: Record<ActionVerb, string> = {
   back: "↩",
 };
 
-// Handles need to be obviously grabbable — 8×8 was hard to aim at
-// and users were dragging the node body / panning the canvas instead
-// of starting a connection. The bigger dot + visible white ring
-// reads as "this is the place to grab".
+// Handles need to be obviously grabbable — small dots were hard to
+// aim at, and any CSS that messes with React Flow's own ``transform``
+// breaks positioning. We bump the size and use box-shadow for the
+// hover halo so the hit target stays exactly where it's drawn.
 const HANDLE_STYLE = {
-  width: 14,
-  height: 14,
+  width: 18,
+  height: 18,
   background: "#EE3424",
-  border: "2px solid #fff",
-  boxShadow: "0 0 0 1px rgba(0,0,0,0.15)",
+  border: "3px solid #fff",
+  boxShadow: "0 0 0 1.5px rgba(0,0,0,0.2)",
+  cursor: "crosshair",
 };
 
 // ─────────────────────────────────────── Start / End
