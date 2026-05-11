@@ -204,7 +204,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         </Form.Item>
 
         {/* ---------- File upload ---------- */}
-        <Form.Item label={<LabelWithHint label={t("newRunModal.uploadApp")} hint="Загрузите файл сборки приложения. Поддерживаются .app.zip и .ipa для iOS, .apk для Android." />}>
+        <Form.Item label={<LabelWithHint label={t("newRunModal.uploadApp")} hint="Загрузите файл сборки приложения. Поддерживаются .app.zip и .ipa (iOS). Поддержка Android (.apk) в работе." />}>
           {uploadStatus === "success" && uploadResult ? (
             <Tag color="green">
               {"\u2713"} {uploadResult.bundle_id} (
@@ -214,11 +214,14 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             <>
               <Upload.Dragger
                 // PER-46: backend (app/api/app_uploads.py) only accepts
-                // .zip / .ipa / .apk. The MIME alternatives are for
+                // .zip / .ipa. Android (.apk) is currently rejected
+                // by the backend (PER-106 #1) — the worker has no
+                // Android UI driver yet. Removed from accept list
+                // so the picker doesn't even surface .apk.
                 // macOS Safari which sometimes hands back octet-stream
                 // for opaque archive types. The picker still does the
                 // primary filtering by extension.
-                accept=".zip,.ipa,.apk,application/zip,application/octet-stream"
+                accept=".zip,.ipa,application/zip,application/octet-stream"
                 showUploadList={false}
                 beforeUpload={(file) => {
                   // PER-46: extension validation BEFORE we ping the
@@ -226,7 +229,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
                   // a 400 from the server. ``Upload.LIST_IGNORE``
                   // keeps the file out of AntD's internal list.
                   const name = file.name.toLowerCase();
-                  const ok = name.endsWith(".zip") || name.endsWith(".ipa") || name.endsWith(".apk");
+                  const ok = name.endsWith(".zip") || name.endsWith(".ipa");
                   if (!ok) {
                     const ext = name.includes(".")
                       ? name.slice(name.lastIndexOf("."))

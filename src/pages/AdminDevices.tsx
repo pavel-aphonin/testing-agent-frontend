@@ -244,7 +244,11 @@ export function AdminDevices() {
                 <Select
                   options={[
                     { value: "ios", label: "iOS (iPhone / iPad)" },
-                    { value: "android", label: "Android" },
+                    // Android is hidden from new device profiles until
+                    // the worker's UI driver supports it (PER-106 #1).
+                    // The platform value stays in the type union so
+                    // historical configs created before this change
+                    // still display correctly in the list above.
                   ]}
                   onChange={() => {
                     form.setFieldsValue({ device: undefined, runtime: undefined });
