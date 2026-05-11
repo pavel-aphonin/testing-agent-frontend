@@ -39,12 +39,11 @@ export function StartFromScreenModal({
   useEffect(() => {
     if (open) {
       form.setFieldsValue({
-        // Default to AI. Hybrid was removed from the mode dropdown
-        // because the explorer currently aliases it to AI — see
-        // explorer/modes.py docstring. If the user passed
-        // defaultMode='hybrid' (e.g. from a legacy preset), fall
-        // through to AI rather than offering an alias.
-        mode: defaultMode && defaultMode !== "hybrid" ? defaultMode : "ai",
+        // Default to AI for ad-hoc "start from this screen" runs —
+        // most likely the user is debugging a specific flow and
+        // wants the strongest exploration. Hybrid stays available
+        // as an explicit choice.
+        mode: defaultMode ?? "ai",
         max_steps: 30,
       });
     }
@@ -87,6 +86,7 @@ export function StartFromScreenModal({
           <Select
             options={[
               { value: "ai", label: "AI (LLM на каждом шаге)" },
+              { value: "hybrid", label: "Hybrid (PUCT + LLM-приоритеты)" },
               { value: "mc", label: "MC (Monte-Carlo, без LLM)" },
             ]}
           />

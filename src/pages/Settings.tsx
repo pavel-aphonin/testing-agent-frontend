@@ -71,12 +71,9 @@ export function Settings() {
     queryFn: listActiveModels,
   });
 
-  // Hybrid removed from the "default mode" picker. It currently
-  // aliases AI in the worker — see explorer/modes.py docstring —
-  // so listing it as a third option would mislead users into
-  // expecting cached-priors + PUCT behaviour they wouldn't get.
   const modeOptions: { value: RunMode; label: string }[] = [
     { value: "mc", label: t("newRunModal.modes.mc") },
+    { value: "hybrid", label: t("newRunModal.modes.hybrid") },
     { value: "ai", label: t("newRunModal.modes.ai") },
   ];
 
