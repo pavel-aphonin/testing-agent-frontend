@@ -27,7 +27,7 @@ React + Ant Design dashboard for Testing Agent. Lets users log in, configure run
 
 ## Modals
 
-- **New Run** (triggered from `/runs`) — bundle ID, device, mode, LLM model, max steps
+- **New Run** (triggered from `/runs`) — app upload (.app.zip / .ipa / .apk), device profile, exploration mode (MC / Hybrid / AI), optional scenarios, optional PBT toggle, max steps
 
 ## Related repos
 
