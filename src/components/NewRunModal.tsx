@@ -40,8 +40,13 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
   const [useScenarios, setUseScenarios] = useState(false);
   const [pbtEnabled, setPbtEnabled] = useState(false);
 
+  // Hybrid mode (originally: PUCT + cached LLM priors) is not offered
+  // for new runs — the explorer currently aliases it to AI (worker
+  // routes both through the same LLM-per-step loop). Until the cached-
+  // priors implementation lands in engine.py, showing "Hybrid" as a
+  // distinct option would mislead testers. Old runs created with
+  // mode='hybrid' still display correctly in history.
   const modeOptions: { value: RunMode; label: string }[] = [
-    { value: "hybrid", label: t("newRunModal.modes.hybrid") },
     { value: "mc", label: t("newRunModal.modes.mc") },
     { value: "ai", label: t("newRunModal.modes.ai") },
   ];
@@ -176,7 +181,7 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
           });
         }}
         initialValues={{
-          mode: "hybrid",
+          mode: "ai",
           max_steps: 200,
           c_puct: 2.0,
           rollout_depth: 5,
