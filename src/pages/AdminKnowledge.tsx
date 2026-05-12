@@ -109,7 +109,14 @@ export function AdminKnowledge() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createKnowledgeDocument,
+    mutationFn: (payload: Omit<KnowledgeDocumentCreate, "workspace_id">) => {
+      if (!workspace?.id) {
+        return Promise.reject(
+          new Error("Сначала выберите рабочее пространство"),
+        );
+      }
+      return createKnowledgeDocument({ ...payload, workspace_id: workspace.id });
+    },
     onSuccess: (doc) => {
       notify.success(
         t("knowledge.uploaded", { title: doc.title, count: doc.chunk_count }),
@@ -156,7 +163,12 @@ export function AdminKnowledge() {
   });
 
   const queryMutation = useMutation({
-    mutationFn: queryKnowledgeBase,
+    mutationFn: (vars: { query: string; top_k: number }) =>
+      // PER-106 #4: scope the test query to the current workspace.
+      queryKnowledgeBase({
+        ...vars,
+        workspace_id: workspace?.id ?? null,
+      }),
     onSuccess: (response) => {
       setSearchResults(response);
     },
@@ -197,10 +209,20 @@ export function AdminKnowledge() {
       }
     } else {
       // Binary file (PDF, DOCX, etc.) — send to server directly
+      if (!workspace?.id) {
+        notify.error(
+          "Ошибка загрузки",
+          "Сначала выберите рабочее пространство",
+        );
+        return;
+      }
       try {
         setUploading(true);
         const formData = new FormData();
         formData.append("file", file);
+        // PER-106 #4: scope the upload to the current workspace so
+        // the document doesn't leak into the global corpus.
+        formData.append("workspace_id", workspace.id);
         const { apiClient } = await import("@/api/client");
         const resp = await apiClient.post("/api/admin/knowledge/documents/upload", formData, {
           headers: { "Content-Type": "multipart/form-data" },

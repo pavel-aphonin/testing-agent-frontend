@@ -1188,6 +1188,9 @@ export interface KnowledgeDocumentSummary {
   embedding_dim: number;
   chunk_count: number;
   uploaded_by_user_id: string;
+  // PER-106 #4: nullable because legacy rows existed before the
+  // workspace_id became required at the API level.
+  workspace_id?: string | null;
   uploaded_at: string;
 }
 
@@ -1200,11 +1203,18 @@ export interface KnowledgeDocumentCreate {
   source_type: "text" | "markdown";
   content: string;
   source_filename?: string | null;
+  // PER-106 #4: required on the wire; the UI fills it from the
+  // currently-selected workspace.
+  workspace_id: string;
 }
 
 export interface KnowledgeQuery {
   query: string;
   top_k?: number;
+  document_ids?: string[] | null;
+  // PER-106 #4: when set, scope the test query to one workspace's
+  // corpus. The admin UI defaults to the currently-selected workspace.
+  workspace_id?: string | null;
 }
 
 export interface KnowledgeMatch {
