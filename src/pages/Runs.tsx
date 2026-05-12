@@ -70,8 +70,12 @@ export function Runs() {
     },
   });
 
-  const canCreate = user?.role === "tester" || user?.role === "admin";
-  const canDelete = canCreate;
+  // PER-106 #10: derive button visibility from the user's actual
+  // permissions, not the role literal. A custom role with runs.create
+  // but no "tester"/"admin" code still needs the "+ New" button.
+  const perms = user?.permissions ?? [];
+  const canCreate = perms.includes("runs.create");
+  const canDelete = perms.includes("runs.delete");
 
   const columns: DataTableColumn<Run>[] = [
     {
