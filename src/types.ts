@@ -742,6 +742,12 @@ export interface Run {
   device_id: string;
   platform: string;
   mode: RunMode;
+  /**
+   * PER-106 #5: the resolved LLM model the run was started with. NULL
+   * for legacy runs created before per-run model selection landed —
+   * those used the worker's TA_LLM_MODEL_NAME default.
+   */
+  llm_model_id?: string | null;
   status: RunStatus;
   max_steps: number;
   c_puct: number;
@@ -1167,6 +1173,12 @@ export interface RunCreateV2 {
   app_file_id: string;
   device_config_id: string;
   mode?: RunMode;
+  /**
+   * PER-106 #5: per-run LLM model override. When omitted the backend
+   * falls back to the user's AgentSettings.default_llm_model_id, and
+   * if that's empty too the worker keeps its env-var default.
+   */
+  llm_model_id?: string | null;
   max_steps?: number;
   c_puct?: number;
   rollout_depth?: number;

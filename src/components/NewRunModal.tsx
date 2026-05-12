@@ -12,6 +12,7 @@ import { createRunV2, uploadApp } from "@/api/runs";
 import { listAttributes } from "@/api/attributes";
 import { useWorkspaceStore } from "@/store/workspace";
 import { listActiveDevices } from "@/api/devices";
+import { listActiveModels } from "@/api/models";
 import { listScenarios } from "@/api/scenarios";
 import { getMySettings } from "@/api/settings";
 import { DatePicker, Divider } from "antd";
@@ -63,6 +64,14 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
     enabled: open,
   });
 
+  // PER-106 #5: drives the per-run model picker. Only active models
+  // are shown — admin disables a model when it's unloaded or buggy.
+  const modelsQuery = useQuery({
+    queryKey: ["active-llm-models"],
+    queryFn: listActiveModels,
+    enabled: open,
+  });
+
   // Run-scoped attributes — rendered as extra form fields so users can
   // set custom metadata (ticket number, tester name, etc.) at create time.
   const runAttrsQ = useQuery({
@@ -99,6 +108,9 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         max_steps: settingsQuery.data.default_max_steps,
         c_puct: settingsQuery.data.c_puct,
         rollout_depth: settingsQuery.data.rollout_depth,
+        // PER-106 #5: pre-fill the user's default model so they can
+        // start a run without opening the dropdown. They still can.
+        llm_model_id: settingsQuery.data.default_llm_model_id ?? undefined,
       });
     }
   }, [open, form, settingsQuery.data]);
@@ -170,6 +182,9 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
             app_file_id: uploadResult.upload_id,
             device_config_id: values.device_config_id,
             mode: values.mode,
+            // PER-106 #5: send the selected model. Omitted/null lets
+            // the backend resolve from AgentSettings or env-var.
+            llm_model_id: values.llm_model_id || undefined,
             max_steps: values.max_steps,
             c_puct: values.c_puct,
             rollout_depth: values.rollout_depth,
@@ -285,6 +300,28 @@ export function NewRunModal({ open, onClose }: NewRunModalProps) {
         {/* ---------- Mode ---------- */}
         <Form.Item name="mode" label={<LabelWithHint label={t("newRunModal.mode")} hint="AI — LLM решает каждое действие. MC — случайный перебор. Hybrid — LLM подсказывает, Monte-Carlo проверяет. Для демо выбирайте Hybrid." />}>
           <Select options={modeOptions} />
+        </Form.Item>
+
+        {/* ---------- LLM model ---------- */}
+        <Form.Item
+          name="llm_model_id"
+          label={
+            <LabelWithHint
+              label="Модель"
+              hint="LLM, которой будет управляться этот запуск. По умолчанию подставляется модель из ваших настроек; вы можете переопределить её для конкретного запуска."
+            />
+          }
+        >
+          <Select
+            allowClear
+            placeholder="По умолчанию из настроек"
+            loading={modelsQuery.isLoading}
+            options={(modelsQuery.data ?? []).map((m) => ({
+              value: m.id,
+              label: `${m.name} · ${m.quantization}`,
+            }))}
+            notFoundContent="Нет доступных моделей"
+          />
         </Form.Item>
 
         {/* ---------- Max steps ---------- */}
