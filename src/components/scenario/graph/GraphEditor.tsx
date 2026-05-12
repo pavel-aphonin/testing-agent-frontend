@@ -92,6 +92,9 @@ const CATEGORY_OPTIONS = [
   { value: "start", label: "Начало" },
   { value: "end", label: "Конец" },
   { value: "action", label: "Действие" },
+  // PER-110: high-level NL instruction; the worker runs an inner
+  // LLM loop until the goal is reported as achieved.
+  { value: "goal", label: "Цель" },
   { value: "decision", label: "Условие" },
   { value: "wait", label: "Пауза" },
   { value: "screen_check", label: "Проверка экрана" },
@@ -681,6 +684,43 @@ function NodeForm({
             onChange={(e) => onChange({ screen_description: e.target.value })}
           />
         </Form.Item>
+      )}
+
+      {/* PER-110: high-level goal — three free-form fields. */}
+      {category === "goal" && (
+        <>
+          <Form.Item
+            label="Что должен сделать агент"
+            tooltip="Опишите цель шага на естественном языке. Например: «Авторизуйся email/password из тестовых данных», «Сделай перевод 100 ₽ на счёт X», «Проверь, что баланс уменьшился на сумму перевода»."
+          >
+            <Input.TextArea
+              rows={4}
+              value={(d.description as string) ?? ""}
+              onChange={(e) => onChange({ description: e.target.value })}
+              placeholder="Авторизуйся с {{test_data.email}} и {{test_data.password}}"
+            />
+          </Form.Item>
+          <Form.Item
+            label="Признак достижения цели (опционально)"
+            tooltip="Описание экрана/состояния, которое подтверждает успех. Если задано, агент сверит финальный экран с этим описанием через LLM."
+          >
+            <Input.TextArea
+              rows={2}
+              value={(d.expected_outcome as string) ?? ""}
+              onChange={(e) => onChange({ expected_outcome: e.target.value })}
+              placeholder="Открылся главный экран с балансом и кнопкой «Перевод»"
+            />
+          </Form.Item>
+          <Form.Item label="Лимит шагов">
+            <InputNumber
+              min={1}
+              max={50}
+              value={(d.max_steps as number) ?? 15}
+              onChange={(v) => onChange({ max_steps: v ?? 15 })}
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+        </>
       )}
 
       {category === "loop_back" && (

@@ -31,6 +31,9 @@ const NODE_SIZES: Record<GraphNode["type"], { w: number; h: number }> = {
   // big enough for typical content but they get laid out around
   // their own children separately when they have any.
   group: { w: 320, h: 200 },
+  // PER-110: goal nodes carry a multi-line description so they tend
+  // to be a bit taller than action nodes.
+  goal: { w: 260, h: 110 },
 };
 
 export function autoLayout(graph: ScenarioGraphV2): ScenarioGraphV2 {

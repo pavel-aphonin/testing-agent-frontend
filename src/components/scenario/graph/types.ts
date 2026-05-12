@@ -16,7 +16,9 @@ export type GraphNodeType =
   | "screen_check"
   | "loop_back"
   | "sub_scenario"
-  | "group";
+  | "group"
+  /** PER-110: high-level NL instruction node. */
+  | "goal";
 
 export interface GraphPosition {
   x: number;
@@ -76,12 +78,29 @@ export interface SubScenarioNodeData {
   [key: string]: unknown;
 }
 
+/** PER-110: high-level instruction in natural language. The worker
+ *  runs a mini LLM-loop on this node until the LLM declares the goal
+ *  done or ``max_steps`` is exhausted. */
+export interface GoalNodeData {
+  /** What the agent must accomplish, free-form. Supports
+   *  ``{{test_data.X}}`` substitution like input values do. */
+  description?: string;
+  /** Optional post-condition the runner verifies once the LLM
+   *  reports success. Same semantics as ``screen_description`` on
+   *  action / screen_check nodes. */
+  expected_outcome?: string;
+  /** Safety cap on the inner LLM-loop. Default 15, hard max 50. */
+  max_steps?: number;
+  [key: string]: unknown;
+}
+
 export type NodeData =
   | ActionNodeData
   | DecisionNodeData
   | WaitNodeData
   | ScreenCheckNodeData
   | LoopBackNodeData
+  | GoalNodeData
   | Record<string, unknown>; // start/end carry no data
 
 export interface GraphNode {

@@ -370,6 +370,19 @@ export function validateGraph(graph: ScenarioGraphV2): ValidationIssue[] {
         });
       }
     }
+    // PER-110: goal nodes need a description — without it the worker
+    // has nothing to prompt the LLM with and the step fails on the
+    // first inner iteration.
+    if (n.type === "goal") {
+      const desc = ((n.data as { description?: string })?.description ?? "").trim();
+      if (!desc) {
+        issues.push({
+          severity: "error",
+          target: `node:${n.id}`,
+          message: `У узла «Цель» не заполнено описание задачи.`,
+        });
+      }
+    }
   }
 
   return issues;
@@ -392,6 +405,11 @@ function labelFor(n: GraphNode): string {
   if (n.type === "wait") return "Пауза";
   if (n.type === "screen_check") return "Проверка экрана";
   if (n.type === "loop_back") return "Возврат";
+  if (n.type === "goal") {
+    const d = n.data as { description?: string };
+    const desc = (d.description ?? "").trim();
+    return desc ? `Цель: ${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}` : "Цель";
+  }
   const data = n.data as { element_label?: string; label?: string };
   return data.element_label || data.label || n.id;
 }

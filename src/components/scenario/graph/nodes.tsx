@@ -10,6 +10,7 @@
 
 import * as AntIcons from "@ant-design/icons";
 import {
+  AimOutlined,
   ArrowLeftOutlined,
   CheckOutlined,
   ClockCircleOutlined,
@@ -27,6 +28,7 @@ import type {
   ActionNodeData,
   ActionVerb,
   DecisionNodeData,
+  GoalNodeData,
   LoopBackNodeData,
   ScreenCheckNodeData,
   SubScenarioNodeData,
@@ -363,6 +365,55 @@ export function SubScenarioNode({ data }: NodeProps) {
   );
 }
 
+// ─────────────────────────────────────── Goal (NL instruction) — PER-110
+
+export function GoalNode({ data }: NodeProps) {
+  const { token } = theme.useToken();
+  const d = (data ?? {}) as GoalNodeData;
+  const desc = (d.description ?? "").trim();
+  const expected = (d.expected_outcome ?? "").trim();
+  const maxSteps = typeof d.max_steps === "number" && d.max_steps > 0 ? d.max_steps : 15;
+
+  return (
+    <div
+      style={{
+        minWidth: 220,
+        maxWidth: 320,
+        // Brand teal-ish accent picks the goal node out from the
+        // blue action nodes at a glance; matches the migration's
+        // `#13c2c2` so palette + canvas agree.
+        background: token.colorBgContainer,
+        border: `2px solid #13c2c2`,
+        borderRadius: 12,
+        padding: "10px 14px",
+        boxShadow: token.boxShadowTertiary,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      <FourSidedHandles kind="source" />
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <AimOutlined style={{ color: "#13c2c2", fontSize: 16 }} />
+        <Tag color="cyan" style={{ margin: 0, fontSize: 11 }}>
+          цель
+        </Tag>
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          до {maxSteps} шагов
+        </Typography.Text>
+      </div>
+      <Typography.Text strong style={{ fontSize: 13, lineHeight: 1.35 }}>
+        {desc || <em style={{ opacity: 0.6 }}>(опишите задачу)</em>}
+      </Typography.Text>
+      {expected && (
+        <Typography.Text type="secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
+          ✓ {expected.length > 80 ? expected.slice(0, 80) + "…" : expected}
+        </Typography.Text>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────── Group (translucent container)
 
 export function GroupNode({ data }: NodeProps) {
@@ -407,6 +458,7 @@ export const SCENARIO_NODE_TYPES = {
   loop_back: LoopBackNode,
   sub_scenario: SubScenarioNode,
   group: GroupNode,
+  goal: GoalNode,
 };
 
 // Suppress "unused" warning on the imports of icons we expose for
